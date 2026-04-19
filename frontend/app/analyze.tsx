@@ -19,14 +19,18 @@ import {
   addCalSample,
   addPrediction,
   getCalSamples,
+  getSettings,
+  saveSettings,
   selectBlankSample,
+  activeSamples,
+  RoiMode,
+  Settings,
 } from "../src/storage";
 import {
   bestMetric,
   defaultEquationValue,
   DEFAULT_EQUATION_LABEL,
   fitAllMetrics,
-  METRICS,
   predictConcentration,
 } from "../src/metrics";
 import { pickFromGallery, takePhoto } from "../src/imagePicker";
@@ -49,12 +53,14 @@ export default function AnalyzeScreen() {
   const [tapPoint, setTapPoint] = useState<{ x: number; y: number } | null>(null);
   const [imgBox, setImgBox] = useState<{ w: number; h: number }>({ w: 1, h: 1 });
 
-  // Calibration inputs
+  const [settings, setSettings] = useState<Settings | null>(null);
+
+  // Calibrate inputs
   const [concentration, setConcentration] = useState<string>("");
   const [asBlank, setAsBlank] = useState(false);
   const [sampleName, setSampleName] = useState("");
 
-  // Calibration data (for predict mode fits)
+  // Predict - loaded calibration
   const [calSamplesLoaded, setCalSamplesLoaded] = useState(false);
   const [calFits, setCalFits] = useState<ReturnType<typeof fitAllMetrics>>([]);
   const [hasCal, setHasCal] = useState(false);
@@ -62,15 +68,21 @@ export default function AnalyzeScreen() {
 
   const [saving, setSaving] = useState(false);
 
-  // Load calibration for predict mode
+  // Load settings
+  useEffect(() => {
+    (async () => setSettings(await getSettings()))();
+  }, []);
+
+  // Load calibration for predict mode (and blank/fits)
   useEffect(() => {
     (async () => {
       const cs = await getCalSamples();
-      if (cs.length >= 2) {
+      const actives = activeSamples(cs);
+      if (actives.length >= 2) {
         const blank = selectBlankSample(cs);
         blankRef.current = blank ? { r: blank.r, g: blank.g, b: blank.b } : undefined;
         const fits = fitAllMetrics(
-          cs.map((s) => ({
+          actives.map((s) => ({
             concentration: s.concentration,
             rgb: { r: s.r, g: s.g, b: s.b },
           })),
@@ -84,6 +96,9 @@ export default function AnalyzeScreen() {
       setCalSamplesLoaded(true);
     })();
   }, []);
+
+  const regionSize = settings?.regionSize ?? 0.15;
+  const roiMode: RoiMode = settings?.roiMode ?? "center";
 
   const pickImage = useCallback(async (src: "camera" | "gallery") => {
     const p = src === "camera" ? await takePhoto() : await pickFromGallery();
@@ -101,7 +116,7 @@ export default function AnalyzeScreen() {
         image_base64: image.base64,
         x: xNorm,
         y: yNorm,
-        region_size: 0.08,
+        region_size: regionSize,
       };
       const res = await fetch(`${BACKEND}/api/extract-rgb`, {
         method: "POST",
@@ -123,16 +138,59 @@ export default function AnalyzeScreen() {
     setImgBox({ w: width, h: height });
   };
 
+  // Auto-sample when image + settings ready for center/locked modes
+  useEffect(() => {
+    if (!image || !settings || imgBox.w <= 1) return;
+    if (roiMode === "center") {
+      const xPx = imgBox.w * 0.5;
+      const yPx = imgBox.h * 0.5;
+      setTapPoint({ x: xPx, y: yPx });
+      callExtract(0.5, 0.5);
+    } else if (roiMode === "locked" && settings.lastRoi) {
+      const { x, y } = settings.lastRoi;
+      const xPx = imgBox.w * x;
+      const yPx = imgBox.h * y;
+      setTapPoint({ x: xPx, y: yPx });
+      callExtract(x, y);
+    }
+    // manual: user taps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [image, imgBox.w, imgBox.h, roiMode]);
+
   const onImagePress = (e: any) => {
     if (!image) return;
+    if (roiMode !== "manual" && roiMode !== "locked") {
+      // Tap ignored for 'center' — let user know via haptic / alert? just allow
+    }
     const { locationX, locationY } = e.nativeEvent;
     const xNorm = Math.max(0, Math.min(1, locationX / imgBox.w));
     const yNorm = Math.max(0, Math.min(1, locationY / imgBox.h));
     setTapPoint({ x: locationX, y: locationY });
     callExtract(xNorm, yNorm);
+    // remember last ROI so 'locked' mode can reuse
+    saveSettings({ lastRoi: { x: xNorm, y: yNorm } }).then((s) => setSettings(s));
   };
 
-  // Predict mode — per-metric values
+  const setRoiMode = async (m: RoiMode) => {
+    const next = await saveSettings({ roiMode: m });
+    setSettings(next);
+  };
+
+  const setRegionSize = async (size: number) => {
+    const next = await saveSettings({ regionSize: size });
+    setSettings(next);
+    if (tapPoint && imgBox.w > 1) {
+      // re-sample at current point with new size
+      callExtract(tapPoint.x / imgBox.w, tapPoint.y / imgBox.h);
+    }
+  };
+
+  // ROI overlay box size in px
+  const overlayBoxPx = Math.max(
+    16,
+    Math.min(imgBox.w, imgBox.h) * regionSize
+  );
+
   const predictRows = useMemo(() => {
     if (mode !== "predict" || !rgb) return [];
     if (hasCal) {
@@ -161,7 +219,6 @@ export default function AnalyzeScreen() {
         };
       });
     }
-    // Fallback: just show default equation value
     return [
       {
         id: "default",
@@ -174,19 +231,19 @@ export default function AnalyzeScreen() {
   }, [mode, rgb, calFits, hasCal]);
 
   const bestRow = useMemo(() => {
-    if (mode !== "predict" || !hasCal) return null;
+    if (mode !== "predict" || !hasCal || !rgb) return null;
     const b = bestMetric(calFits);
     if (!b || !b.fit) return null;
     return {
       label: b.metric.label,
       r2: b.fit.r2,
-      value: predictConcentration(b.fit, b.metric, rgb!, blankRef.current),
+      value: predictConcentration(b.fit, b.metric, rgb, blankRef.current),
     };
   }, [mode, hasCal, calFits, rgb]);
 
   const onSave = async () => {
     if (!rgb) {
-      Alert.alert("No RGB", "Tap the image to sample a region first.");
+      Alert.alert("No RGB", "Sample a region first.");
       return;
     }
     setSaving(true);
@@ -194,14 +251,17 @@ export default function AnalyzeScreen() {
       if (mode === "calibrate") {
         const conc = parseFloat(concentration);
         if (!Number.isFinite(conc)) {
-          Alert.alert("Concentration required", "Enter a numeric value.");
+          Alert.alert(
+            "Concentration required",
+            "Enter a numeric value in µM."
+          );
           setSaving(false);
           return;
         }
         await addCalSample({
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           createdAt: Date.now(),
-          name: sampleName.trim() || `C=${conc}`,
+          name: sampleName.trim() || `${conc} µM`,
           uri: image?.uri,
           r: rgb.r,
           g: rgb.g,
@@ -212,7 +272,6 @@ export default function AnalyzeScreen() {
         });
         router.back();
       } else {
-        // predict
         let bestLabel = DEFAULT_EQUATION_LABEL;
         let bestId = "default";
         let bestR2 = 0;
@@ -252,8 +311,16 @@ export default function AnalyzeScreen() {
   const title = mode === "calibrate" ? "Add calibration" : "New measurement";
   const subtitle =
     mode === "calibrate"
-      ? "SAMPLE · KNOWN CONCENTRATION"
-      : "ROI · PREDICT CONCENTRATION";
+      ? "SAMPLE · KNOWN CONCENTRATION (µM)"
+      : "ROI · PREDICT CONCENTRATION (µM)";
+
+  if (!settings) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#FFF", alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator color="#002FA7" />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -268,7 +335,6 @@ export default function AnalyzeScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={styles.headerRow}>
           <TouchableOpacity
             onPress={() => router.back()}
@@ -283,9 +349,93 @@ export default function AnalyzeScreen() {
 
         <Text style={styles.title}>{title}</Text>
 
+        {/* ROI Mode pills */}
+        <Text style={styles.sectionLabel}>ROI MODE</Text>
+        <View style={styles.pillRow}>
+          {(["center", "locked", "manual"] as RoiMode[]).map((m) => (
+            <TouchableOpacity
+              key={m}
+              onPress={() => setRoiMode(m)}
+              style={[
+                styles.pill,
+                roiMode === m && styles.pillActive,
+              ]}
+              testID={`roi-mode-${m}`}
+              activeOpacity={0.85}
+            >
+              <Feather
+                name={
+                  m === "center"
+                    ? "crosshair"
+                    : m === "locked"
+                    ? "lock"
+                    : "mouse-pointer"
+                }
+                size={13}
+                color={roiMode === m ? "#FFFFFF" : "#0A0A0A"}
+              />
+              <Text
+                style={[
+                  styles.pillText,
+                  roiMode === m && styles.pillTextActive,
+                ]}
+              >
+                {m === "center"
+                  ? "AUTO CENTER"
+                  : m === "locked"
+                  ? "LOCKED"
+                  : "MANUAL TAP"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={styles.roiHint}>
+          {roiMode === "center" &&
+            "Uses the center of every image (best when the vial is framed in a black box)."}
+          {roiMode === "locked" &&
+            (settings.lastRoi
+              ? `Reuses locked ROI at (${(settings.lastRoi.x * 100).toFixed(0)}%, ${(settings.lastRoi.y * 100).toFixed(0)}%). Tap the image to update.`
+              : "Tap once on an image — that position is reused for every future sample.")}
+          {roiMode === "manual" && "Tap a region of interest on every image."}
+        </Text>
+
+        {/* Region size pills */}
+        <Text style={[styles.sectionLabel, { marginTop: 12 }]}>
+          ROI SIZE · {Math.round(regionSize * 100)}%
+        </Text>
+        <View style={styles.pillRow}>
+          {[
+            { v: 0.08, label: "S" },
+            { v: 0.15, label: "M" },
+            { v: 0.25, label: "L" },
+            { v: 0.4, label: "XL" },
+          ].map(({ v, label }) => (
+            <TouchableOpacity
+              key={label}
+              onPress={() => setRegionSize(v)}
+              style={[
+                styles.pill,
+                { flex: 1 },
+                regionSize === v && styles.pillActive,
+              ]}
+              testID={`roi-size-${label}`}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[
+                  styles.pillText,
+                  regionSize === v && styles.pillTextActive,
+                ]}
+              >
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {/* Image pick buttons */}
         {!image && (
-          <View style={styles.pickCol}>
+          <View style={[styles.pickCol, { marginTop: 14 }]}>
             <TouchableOpacity
               style={styles.primaryBtn}
               onPress={() => pickImage("camera")}
@@ -307,13 +457,13 @@ export default function AnalyzeScreen() {
           </View>
         )}
 
-        {/* Image + ROI tap */}
+        {/* Image + ROI */}
         {image && (
           <>
             <TouchableOpacity
               activeOpacity={0.9}
               onPress={onImagePress}
-              style={styles.imageWrap}
+              style={[styles.imageWrap, { marginTop: 14 }]}
               testID="analyze-image-touchable"
             >
               <Image
@@ -326,8 +476,13 @@ export default function AnalyzeScreen() {
                 <View
                   pointerEvents="none"
                   style={[
-                    styles.crosshair,
-                    { left: tapPoint.x - 16, top: tapPoint.y - 16 },
+                    styles.roiBox,
+                    {
+                      left: tapPoint.x - overlayBoxPx / 2,
+                      top: tapPoint.y - overlayBoxPx / 2,
+                      width: overlayBoxPx,
+                      height: overlayBoxPx,
+                    },
                   ]}
                 />
               )}
@@ -335,7 +490,9 @@ export default function AnalyzeScreen() {
                 <View pointerEvents="none" style={styles.tapHint}>
                   <Feather name="crosshair" size={16} color="#FFFFFF" />
                   <Text style={styles.tapHintText}>
-                    TAP THE REGION OF INTEREST
+                    {roiMode === "center"
+                      ? "SAMPLING CENTER…"
+                      : "TAP THE REGION OF INTEREST"}
                   </Text>
                 </View>
               )}
@@ -358,7 +515,7 @@ export default function AnalyzeScreen() {
           </>
         )}
 
-        {/* RGB display */}
+        {/* RGB */}
         {image && (
           <View style={styles.bentoRow}>
             <MetricCard
@@ -397,16 +554,19 @@ export default function AnalyzeScreen() {
         {/* Calibrate inputs */}
         {mode === "calibrate" && rgb && (
           <>
-            <Text style={styles.sectionLabel}>CONCENTRATION</Text>
-            <TextInput
-              style={styles.numInput}
-              keyboardType="decimal-pad"
-              value={concentration}
-              onChangeText={setConcentration}
-              placeholder="e.g. 5.0"
-              placeholderTextColor="#9CA3AF"
-              testID="concentration-input"
-            />
+            <Text style={styles.sectionLabel}>CONCENTRATION · µM</Text>
+            <View style={styles.numInputWrap}>
+              <TextInput
+                style={styles.numInput}
+                keyboardType="decimal-pad"
+                value={concentration}
+                onChangeText={setConcentration}
+                placeholder="e.g. 5.0"
+                placeholderTextColor="#9CA3AF"
+                testID="concentration-input"
+              />
+              <Text style={styles.unitSuffix}>µM</Text>
+            </View>
             <TextInput
               style={[styles.numInput, { marginTop: 10 }]}
               value={sampleName}
@@ -427,13 +587,13 @@ export default function AnalyzeScreen() {
                 color={asBlank ? "#0A0A0A" : "#9CA3AF"}
               />
               <Text style={styles.blankToggleText}>
-                {asBlank ? "MARKED AS BLANK (I\u2080)" : "MARK AS BLANK (I\u2080)"}
+                {asBlank ? "MARKED AS BLANK (I₀)" : "MARK AS BLANK (I₀)"}
               </Text>
             </TouchableOpacity>
           </>
         )}
 
-        {/* Predict output */}
+        {/* Predict */}
         {mode === "predict" && rgb && calSamplesLoaded && (
           <>
             {hasCal && bestRow ? (
@@ -443,7 +603,7 @@ export default function AnalyzeScreen() {
                 </Text>
                 <Text style={styles.bigResultValue}>
                   {Number.isFinite(bestRow.value)
-                    ? bestRow.value.toFixed(3)
+                    ? `${bestRow.value.toFixed(3)} µM`
                     : "—"}
                 </Text>
                 <Text style={styles.bigResultMeta}>
@@ -456,7 +616,8 @@ export default function AnalyzeScreen() {
                 <Feather name="alert-triangle" size={14} color="#92400E" />
                 <Text style={styles.fallbackText}>
                   No calibration — using default equation.{"\n"}
-                  Value: {Number.isFinite(defaultEquationValue(rgb))
+                  Value:{" "}
+                  {Number.isFinite(defaultEquationValue(rgb))
                     ? defaultEquationValue(rgb).toFixed(4)
                     : "—"}{" "}
                   ({DEFAULT_EQUATION_LABEL})
@@ -464,7 +625,6 @@ export default function AnalyzeScreen() {
               </View>
             )}
 
-            {/* Per-metric table */}
             <Text style={[styles.sectionLabel, { marginTop: 14 }]}>
               ALL {hasCal ? "EQUATIONS" : ""} · PREDICTIONS
             </Text>
@@ -481,7 +641,7 @@ export default function AnalyzeScreen() {
                 </View>
                 <Text style={styles.predValue}>
                   {Number.isFinite(r.prediction)
-                    ? r.prediction.toFixed(3)
+                    ? `${r.prediction.toFixed(3)}${hasCal ? " µM" : ""}`
                     : "—"}
                 </Text>
               </View>
@@ -489,7 +649,6 @@ export default function AnalyzeScreen() {
           </>
         )}
 
-        {/* Save */}
         {image && rgb && (
           <TouchableOpacity
             onPress={onSave}
@@ -504,7 +663,9 @@ export default function AnalyzeScreen() {
               <>
                 <Feather name="save" size={18} color="#FFFFFF" />
                 <Text style={styles.saveBtnText}>
-                  {mode === "calibrate" ? "SAVE TO CALIBRATION" : "SAVE PREDICTION"}
+                  {mode === "calibrate"
+                    ? "SAVE TO CALIBRATION"
+                    : "SAVE PREDICTION"}
                 </Text>
               </>
             )}
@@ -560,7 +721,43 @@ const styles = StyleSheet.create({
     color: "#0A0A0A",
     fontWeight: "900",
     letterSpacing: -1,
-    marginBottom: 18,
+    marginBottom: 12,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    color: "#6B7280",
+    fontWeight: "800",
+    letterSpacing: 2.2,
+    marginBottom: 8,
+    marginTop: 6,
+  },
+  pillRow: { flexDirection: "row", gap: 8 },
+  pill: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 6,
+    backgroundColor: "#FFFFFF",
+  },
+  pillActive: { backgroundColor: "#0A0A0A", borderColor: "#0A0A0A" },
+  pillText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#0A0A0A",
+    letterSpacing: 1.3,
+  },
+  pillTextActive: { color: "#FFFFFF" },
+  roiHint: {
+    fontSize: 11,
+    color: "#6B7280",
+    marginTop: 6,
+    lineHeight: 15,
   },
   pickCol: { gap: 10, marginBottom: 20 },
   primaryBtn: {
@@ -606,14 +803,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   image: { width: "100%", height: "100%" },
-  crosshair: {
+  roiBox: {
     position: "absolute",
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
+    borderWidth: 2.5,
     borderColor: "#FFFFFF",
-    backgroundColor: "rgba(0,47,167,0.45)",
+    backgroundColor: "rgba(0,47,167,0.18)",
+    borderRadius: 4,
   },
   tapHint: {
     position: "absolute",
@@ -655,11 +850,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     padding: 14,
   },
-  metricLabel: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 2.2,
-  },
+  metricLabel: { fontSize: 11, fontWeight: "800", letterSpacing: 2.2 },
   metricValue: {
     marginTop: 6,
     fontSize: 28,
@@ -698,23 +889,25 @@ const styles = StyleSheet.create({
     color: "#0A0A0A",
     marginTop: 2,
   },
-  sectionLabel: {
-    fontSize: 11,
-    color: "#6B7280",
-    fontWeight: "800",
-    letterSpacing: 2.2,
-    marginBottom: 8,
-    marginTop: 6,
-  },
+  numInputWrap: { position: "relative" },
   numInput: {
     borderWidth: 1,
     borderColor: "#E5E7EB",
     borderRadius: 6,
     paddingHorizontal: 14,
+    paddingRight: 44,
     paddingVertical: 14,
     fontSize: 16,
     color: "#0A0A0A",
     backgroundColor: "#FFFFFF",
+  },
+  unitSuffix: {
+    position: "absolute",
+    right: 14,
+    top: 16,
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#6B7280",
   },
   blankToggle: {
     flexDirection: "row",
@@ -752,7 +945,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   bigResultValue: {
-    fontSize: 44,
+    fontSize: 40,
     fontWeight: "900",
     color: "#0A0A0A",
     letterSpacing: -1.4,
@@ -793,10 +986,10 @@ const styles = StyleSheet.create({
   predR2: { fontSize: 11, color: "#002FA7", fontWeight: "700", marginTop: 2 },
   predMute: { fontSize: 11, color: "#92400E", fontWeight: "600", marginTop: 2 },
   predValue: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "900",
     color: "#0A0A0A",
-    minWidth: 70,
+    minWidth: 90,
     textAlign: "right",
   },
   saveBtn: {

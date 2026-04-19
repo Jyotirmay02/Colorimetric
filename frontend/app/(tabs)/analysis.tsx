@@ -165,7 +165,7 @@ export default function AnalysisScreen() {
                     accent="#0EA5E9"
                   />
                   <Stat
-                    label="LoD"
+                    label="LoD (µM)"
                     value={
                       Number.isFinite(selected.fit.lod)
                         ? selected.fit.lod.toFixed(3)
@@ -429,7 +429,7 @@ function Scatter({ fit, color }: { fit: MetricFit; color: string }) {
           fontWeight="700"
           textAnchor="middle"
         >
-          CONCENTRATION
+          CONCENTRATION (µM)
         </SvgText>
         <SvgText
           x={12}

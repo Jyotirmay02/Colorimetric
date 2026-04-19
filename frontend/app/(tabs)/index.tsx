@@ -114,25 +114,30 @@ export default function HomeScreen() {
         {/* Best model card */}
         {best && best.fit ? (
           <View style={styles.bestCard} testID="home-best-card">
-            <View style={styles.bestAccent} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.bestLabel}>BEST COLORIMETRIC MODEL</Text>
-              <Text style={styles.bestName} numberOfLines={2}>
-                {bestLabel}
-              </Text>
-              <View style={styles.bestStatsRow}>
-                <BestStat label="R²" value={best.fit.r2.toFixed(4)} />
-                <BestStat label="SE" value={best.fit.se.toFixed(3)} />
-                <BestStat
-                  label="LoD"
-                  value={
-                    Number.isFinite(best.fit.lod)
-                      ? best.fit.lod.toFixed(3)
-                      : "—"
-                  }
-                />
-                <BestStat label="n" value={`${best.fit.n}`} />
+            <View style={styles.bestHeader}>
+              <View style={styles.bestTrophy}>
+                <Feather name="award" size={18} color="#FFFFFF" />
               </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.bestLabel}>BEST COLORIMETRIC MODEL</Text>
+                <Text style={styles.bestName} numberOfLines={2}>
+                  {bestLabel}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.bestStatsRow}>
+              <BestStat label="R²" value={best.fit.r2.toFixed(4)} accent="#16A34A" />
+              <BestStat label="SE" value={best.fit.se.toFixed(3)} accent="#0EA5E9" />
+              <BestStat
+                label="LoD (µM)"
+                value={
+                  Number.isFinite(best.fit.lod)
+                    ? best.fit.lod.toFixed(3)
+                    : "—"
+                }
+                accent="#A855F7"
+              />
+              <BestStat label="n" value={`${best.fit.n}`} accent="#F59E0B" />
             </View>
           </View>
         ) : (
@@ -199,7 +204,7 @@ export default function HomeScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.predValue}>
                     {Number.isFinite(p.predictedConcentration)
-                      ? p.predictedConcentration.toFixed(3)
+                      ? `${p.predictedConcentration.toFixed(3)} µM`
                       : "—"}
                   </Text>
                   <Text style={styles.predMeta} numberOfLines={1}>
@@ -247,10 +252,18 @@ function StatTile({
   );
 }
 
-function BestStat({ label, value }: { label: string; value: string }) {
+function BestStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+}) {
   return (
-    <View style={{ flex: 1 }}>
-      <Text style={styles.bestStatLabel}>{label}</Text>
+    <View style={[styles.bestStatCell, { borderTopColor: accent }]}>
+      <Text style={[styles.bestStatLabel, { color: accent }]}>{label}</Text>
       <Text style={styles.bestStatValue}>{value}</Text>
     </View>
   );

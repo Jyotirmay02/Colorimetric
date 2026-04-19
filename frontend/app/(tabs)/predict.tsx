@@ -154,7 +154,7 @@ export default function PredictScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.bigValue}>
                   {Number.isFinite(p.predictedConcentration)
-                    ? p.predictedConcentration.toFixed(3)
+                    ? `${p.predictedConcentration.toFixed(3)} µM`
                     : "—"}
                 </Text>
                 <Text style={styles.meta}>

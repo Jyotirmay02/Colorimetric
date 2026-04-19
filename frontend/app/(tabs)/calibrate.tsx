@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -20,6 +20,8 @@ import {
   setBlank,
   clearBlank,
   clearCal,
+  toggleExcluded,
+  activeSamples,
 } from "../../src/storage";
 import { bestMetric, fitAllMetrics } from "../../src/metrics";
 
@@ -48,18 +50,35 @@ export default function CalibrateScreen() {
   );
 
   const blank = selectBlankSample(samples);
-  const rgbList = samples.map((s) => ({
+  const blankId = blank?.id ?? null;
+  const active = activeSamples(samples);
+
+  const rgbList = active.map((s) => ({
     concentration: s.concentration,
     rgb: { r: s.r, g: s.g, b: s.b },
+    excluded: s.excluded,
   }));
   const blankRGB = blank ? { r: blank.r, g: blank.g, b: blank.b } : undefined;
-  const fits = samples.length >= 2 ? fitAllMetrics(rgbList, blankRGB) : [];
+  const fits = active.length >= 2 ? fitAllMetrics(rgbList, blankRGB) : [];
   const best = fits.length ? bestMetric(fits) : null;
+
+  // Warn when concentration range span is very wide — likely saturation.
+  const rangeWarning = useMemo(() => {
+    if (active.length < 3) return null;
+    const xs = active.map((s) => s.concentration).filter((x) => x > 0);
+    if (xs.length < 3) return null;
+    const mn = Math.min(...xs);
+    const mx = Math.max(...xs);
+    if (mn > 0 && mx / mn >= 10) {
+      return `Wide range (${mn}\u2013${mx} \u00B5M). Response may be non-linear at high concentrations \u2014 consider excluding outliers.`;
+    }
+    return null;
+  }, [active]);
 
   const confirmClear = () =>
     Alert.alert(
       "Clear calibration?",
-      "This removes all calibration samples. Predictions will fall back to the default equation.",
+      "This removes all calibration samples.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -87,10 +106,15 @@ export default function CalibrateScreen() {
     ]);
 
   const toggleBlank = async (id: string) => {
-    const s = samples.find((x) => x.id === id);
-    if (!s) return;
-    if (s.isBlank) await clearBlank();
+    // If user taps the star on a sample that is already acting as blank
+    // (either explicitly or auto), clear it. Otherwise promote that sample.
+    if (blankId === id) await clearBlank();
     else await setBlank(id);
+    load();
+  };
+
+  const onToggleExcluded = async (id: string) => {
+    await toggleExcluded(id);
     load();
   };
 
@@ -111,7 +135,7 @@ export default function CalibrateScreen() {
         </View>
 
         <Text style={styles.subtitle}>
-          Add ~10 samples of known concentration. Mark a blank (I₀) for
+          Add ~10 samples of known concentration (µM). Mark a blank (I₀) for
           Beer–Lambert style equations. The app finds the equation with the
           best R² automatically.
         </Text>
@@ -122,6 +146,9 @@ export default function CalibrateScreen() {
             <Text style={styles.statusLabel}>STATUS</Text>
             <Text style={styles.statusValue}>
               {samples.length} SAMPLE{samples.length === 1 ? "" : "S"}
+              {samples.length - active.length > 0
+                ? ` · ${samples.length - active.length} EXCL`
+                : ""}
               {blank ? " · BLANK ✓" : " · NO BLANK"}
             </Text>
             {best && best.fit ? (
@@ -131,17 +158,14 @@ export default function CalibrateScreen() {
                 </Text>
                 <Text style={styles.bestLabel}>{best.metric.label}</Text>
                 <Text style={styles.bestR2}>
-                  R² = {best.fit.r2.toFixed(4)} · SE ={" "}
-                  {best.fit.se.toFixed(3)} · LoD ={" "}
-                  {Number.isFinite(best.fit.lod)
-                    ? best.fit.lod.toFixed(3)
-                    : "—"}
+                  R² = {best.fit.r2.toFixed(4)} · SE = {best.fit.se.toFixed(3)}{" "}
+                  · LoD = {Number.isFinite(best.fit.lod) ? `${best.fit.lod.toFixed(3)} µM` : "—"}
                 </Text>
               </>
             ) : (
               <Text style={[styles.statusMute, { marginTop: 8 }]}>
-                {samples.length < 2
-                  ? "Add ≥ 2 samples to compute fits."
+                {active.length < 2
+                  ? "Add ≥ 2 active samples to compute fits."
                   : "Fits pending…"}
               </Text>
             )}
@@ -159,6 +183,13 @@ export default function CalibrateScreen() {
           </TouchableOpacity>
         </View>
 
+        {rangeWarning && (
+          <View style={styles.warnBanner}>
+            <Feather name="alert-triangle" size={14} color="#92400E" />
+            <Text style={styles.warnText}>{rangeWarning}</Text>
+          </View>
+        )}
+
         {/* Samples list */}
         <Text style={[styles.sectionLabel, { marginTop: 6 }]}>
           SAMPLES · {samples.length}
@@ -172,61 +203,90 @@ export default function CalibrateScreen() {
             <Text style={styles.emptyTitle}>NO SAMPLES YET</Text>
             <Text style={styles.emptySub}>
               Tap ADD, capture or upload a vial image, select the region of
-              interest, then enter the known concentration.
+              interest, then enter the known concentration in µM.
             </Text>
           </View>
         ) : (
-          samples.map((s) => (
-            <View
-              key={s.id}
-              style={styles.sampleRow}
-              testID={`cal-item-${s.id}`}
-            >
-              {s.uri ? (
-                <Image source={{ uri: s.uri }} style={styles.thumb} />
-              ) : (
-                <View style={[styles.thumb, { backgroundColor: s.hex }]} />
-              )}
-              <View style={{ flex: 1 }}>
-                <View style={styles.sampleTopRow}>
-                  <Text style={styles.sampleName}>
-                    {s.name || "Sample"}
+          samples.map((s) => {
+            const isBlankRow = s.id === blankId;
+            const autoBlank = isBlankRow && !s.isBlank; // blank auto-detected via conc=0
+            return (
+              <View
+                key={s.id}
+                style={[
+                  styles.sampleRow,
+                  s.excluded && styles.sampleRowExcluded,
+                  isBlankRow && styles.sampleRowBlank,
+                ]}
+                testID={`cal-item-${s.id}`}
+              >
+                {s.uri ? (
+                  <Image source={{ uri: s.uri }} style={styles.thumb} />
+                ) : (
+                  <View style={[styles.thumb, { backgroundColor: s.hex }]} />
+                )}
+                <View style={{ flex: 1 }}>
+                  <View style={styles.sampleTopRow}>
+                    <Text style={styles.sampleName}>
+                      {s.name || "Sample"}
+                    </Text>
+                    {isBlankRow && (
+                      <View style={styles.blankPill}>
+                        <Feather name="star" size={10} color="#0A0A0A" />
+                        <Text style={styles.blankPillText}>
+                          {autoBlank ? "BLANK (AUTO)" : "BLANK"}
+                        </Text>
+                      </View>
+                    )}
+                    {s.excluded && (
+                      <View style={styles.exclPill}>
+                        <Text style={styles.exclPillText}>EXCLUDED</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.sampleMeta}>
+                    Conc:{" "}
+                    <Text style={styles.bold}>{s.concentration} µM</Text>
                   </Text>
-                  {s.isBlank && (
-                    <View style={styles.blankPill}>
-                      <Text style={styles.blankPillText}>BLANK</Text>
-                    </View>
-                  )}
+                  <Text style={styles.sampleMeta}>
+                    R {s.r} · G {s.g} · B {s.b} · {s.hex}
+                  </Text>
                 </View>
-                <Text style={styles.sampleMeta}>
-                  Conc: <Text style={styles.bold}>{s.concentration}</Text>
-                </Text>
-                <Text style={styles.sampleMeta}>
-                  R {s.r} · G {s.g} · B {s.b} · {s.hex}
-                </Text>
+                <TouchableOpacity
+                  onPress={() => onToggleExcluded(s.id)}
+                  hitSlop={10}
+                  style={styles.actionBtn}
+                  testID={`cal-excl-${s.id}`}
+                >
+                  <Feather
+                    name={s.excluded ? "eye-off" : "eye"}
+                    size={18}
+                    color={s.excluded ? "#EF4444" : "#9CA3AF"}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => toggleBlank(s.id)}
+                  hitSlop={10}
+                  style={styles.actionBtn}
+                  testID={`cal-blank-${s.id}`}
+                >
+                  <Feather
+                    name="star"
+                    size={18}
+                    color={isBlankRow ? "#F59E0B" : "#9CA3AF"}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => removeSample(s.id)}
+                  hitSlop={10}
+                  style={styles.actionBtn}
+                  testID={`cal-delete-${s.id}`}
+                >
+                  <Feather name="trash-2" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                onPress={() => toggleBlank(s.id)}
-                hitSlop={10}
-                style={styles.actionBtn}
-                testID={`cal-blank-${s.id}`}
-              >
-                <Feather
-                  name={s.isBlank ? "star" : "circle"}
-                  size={18}
-                  color={s.isBlank ? "#FFC300" : "#9CA3AF"}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => removeSample(s.id)}
-                hitSlop={10}
-                style={styles.actionBtn}
-                testID={`cal-delete-${s.id}`}
-              >
-                <Feather name="trash-2" size={18} color="#9CA3AF" />
-              </TouchableOpacity>
-            </View>
-          ))
+            );
+          })
         )}
 
         <View style={{ height: 24 }} />
@@ -280,7 +340,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 6,
     padding: 16,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   statusLabel: {
     fontSize: 10,
@@ -289,7 +349,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   statusValue: {
-    fontSize: 15,
+    fontSize: 14,
     color: "#0A0A0A",
     fontWeight: "800",
     marginTop: 2,
@@ -301,7 +361,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 2,
   },
-  bestR2: { fontSize: 12, color: "#002FA7", marginTop: 2, fontWeight: "700" },
+  bestR2: { fontSize: 11, color: "#002FA7", marginTop: 2, fontWeight: "700" },
   addBtn: {
     backgroundColor: "#002FA7",
     paddingHorizontal: 18,
@@ -317,6 +377,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 1.6,
   },
+  warnBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 10,
+    backgroundColor: "#FFFBEB",
+    borderColor: "#FDE68A",
+    borderWidth: 1,
+    borderRadius: 6,
+    marginBottom: 12,
+  },
+  warnText: { flex: 1, color: "#92400E", fontSize: 11, fontWeight: "700", lineHeight: 15 },
   sectionLabel: {
     fontSize: 11,
     color: "#6B7280",
@@ -351,7 +423,7 @@ const styles = StyleSheet.create({
   sampleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     backgroundColor: "#F8F9FA",
     borderWidth: 1,
     borderColor: "#E5E7EB",
@@ -359,7 +431,17 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 10,
   },
-  sampleTopRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  sampleRowBlank: {
+    borderColor: "#F59E0B",
+    backgroundColor: "#FFFBEB",
+  },
+  sampleRowExcluded: { opacity: 0.55 },
+  sampleTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap",
+  },
   thumb: {
     width: 52,
     height: 52,
@@ -371,7 +453,10 @@ const styles = StyleSheet.create({
   sampleMeta: { fontSize: 12, color: "#4B5563", marginTop: 2 },
   bold: { color: "#0A0A0A", fontWeight: "800" },
   blankPill: {
-    backgroundColor: "#FFC300",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FDE68A",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 3,
@@ -382,5 +467,17 @@ const styles = StyleSheet.create({
     color: "#0A0A0A",
     letterSpacing: 1.2,
   },
-  actionBtn: { padding: 6 },
+  exclPill: {
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+  },
+  exclPillText: {
+    fontSize: 9,
+    fontWeight: "900",
+    color: "#991B1B",
+    letterSpacing: 1.2,
+  },
+  actionBtn: { padding: 5 },
 });

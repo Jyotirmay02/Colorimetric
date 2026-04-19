@@ -132,15 +132,19 @@ export type MetricFit = {
 };
 
 export function fitAllMetrics(
-  samples: { concentration: number; rgb: RGB }[],
+  samples: { concentration: number; rgb: RGB; excluded?: boolean }[],
   blank?: RGB
 ): MetricFit[] {
+  const active = samples.filter((s) => !s.excluded);
   return METRICS.map((m) => {
     if (m.needsBlank && !blank) {
       return { metric: m, fit: null, error: "Needs blank (I\u2080)" };
     }
-    const xs = samples.map((s) => s.concentration);
-    const ys = samples.map((s) => m.compute(s.rgb, blank));
+    if (active.length < 2) {
+      return { metric: m, fit: null, error: "Need \u2265 2 active samples" };
+    }
+    const xs = active.map((s) => s.concentration);
+    const ys = active.map((s) => m.compute(s.rgb, blank));
     const fit = linearFit(xs, ys);
     return { metric: m, fit, error: fit ? undefined : "Fit failed" };
   });

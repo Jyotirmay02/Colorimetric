@@ -13,13 +13,13 @@ export default function TabsLayout() {
           borderTopColor: "#E5E7EB",
           borderTopWidth: 1,
           height: 68,
-          paddingTop: 8,
-          paddingBottom: 12,
+          paddingTop: 6,
+          paddingBottom: 10,
         },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 9.5,
           fontWeight: "800",
-          letterSpacing: 1.2,
+          letterSpacing: 1,
           textTransform: "uppercase",
         },
       }}
@@ -29,7 +29,7 @@ export default function TabsLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="home" size={size} color={color} />
+            <Feather name="home" size={size - 2} color={color} />
           ),
         }}
       />
@@ -38,7 +38,7 @@ export default function TabsLayout() {
         options={{
           title: "Calibrate",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="sliders" size={size} color={color} />
+            <Feather name="sliders" size={size - 2} color={color} />
           ),
         }}
       />
@@ -47,7 +47,7 @@ export default function TabsLayout() {
         options={{
           title: "Predict",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="target" size={size} color={color} />
+            <Feather name="target" size={size - 2} color={color} />
           ),
         }}
       />
@@ -56,7 +56,16 @@ export default function TabsLayout() {
         options={{
           title: "Analysis",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="activity" size={size} color={color} />
+            <Feather name="activity" size={size - 2} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: "History",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="clock" size={size - 2} color={color} />
           ),
         }}
       />
