@@ -1,46 +1,60 @@
 # Product Requirements Document — Chemistry RGB Analyzer
 
 ## Overview
-A mobile Expo React Native app for chemistry research scholars to identify RGB values from solution images, apply custom computation formulas (e.g., Beer–Lambert absorbance), and visualize results over time.
+Mobile Expo React Native app for chemistry research scholars to identify RGB values from solution images, build calibration curves from known-concentration samples, and predict concentration of new samples using the best-fitting colorimetric equation.
 
 ## Users
-- Single-user chemistry researcher (no auth).
+Single-user chemistry researcher (no auth).
 
-## Core Features
-1. **Capture / Upload**
-   - Camera photo (expo-image-picker launchCameraAsync with base64)
-   - Gallery upload (expo-image-picker launchImageLibraryAsync)
-   - Permission prompts for camera + media library.
+## Core Workflow
 
-2. **RGB Extraction** (backend `/api/extract-rgb` using Pillow)
-   - Mode A: Full image average RGB
-   - Mode B: Tap-to-sample — user taps a point, backend averages small region around that point (region_size default 0.08).
-   - Returns R, G, B (0–255), hex, optional sampled region bounds.
+### 1. Calibrate (first-run & editable later)
+- User adds ~10 samples (target), each: image + known **concentration**.
+- User **taps a Region of Interest (ROI)** on each image — backend (Pillow) averages RGB over a small square window.
+- User can mark one sample as **Blank (I₀)** (auto-detected if concentration = 0).
+- App automatically fits **14 colorimetric equations** linearly vs. concentration; computes R², SE, LoD for each.
+- Best-R² equation is highlighted on the Calibrate status card.
 
-3. **Editable Computation Formula**
-   - Default: `-log10(R01)` (Beer–Lambert style)
-   - Variables: R, G, B (0–255), R01, G01, B01 (0–1)
-   - Functions: log10, ln, sqrt, exp, abs, min, max, pow, sin, cos, tan; ^ for power
-   - Safe evaluator in `frontend/src/formula.ts` (whitelisted identifiers, no Function escapes).
+### 2. Predict (always available)
+- User captures/uploads new image → taps ROI.
+- If calibration exists → concentration is computed via the **best-R² equation**; per-equation predictions shown as a table.
+- If no calibration → falls back to default equation `log₁₀(255 / I)` with a clear banner.
+- Predictions are saved to local history.
 
-4. **Persistence**
-   - Samples stored on device via AsyncStorage (`chem_rgb_samples_v1`). MongoDB not used for samples (per user choice).
-   - Fields: id, createdAt, name, uri, r, g, b, hex, formula, computed.
+### 3. Analysis
+- All 14 equations ranked by **R² (desc)** with bars.
+- Tap any equation → scatter plot (concentration vs metric value) with fitted line, plus R² / SE / LoD / n stats and the linear equation.
 
-5. **Visualization** (History tab)
-   - Line chart (react-native-chart-kit): computed values across last 12 samples
-   - Bar chart: selected sample's R/G/B
-   - Scrollable list with color swatches; tap to select; delete/clear all
+## 14 Colorimetric Equations
+R · G · B · (R+G+B)/3 · I = 0.299R+0.587G+0.112B · I₀−I · (R+G+B)/R · (R+G+B)/G · (R+G+B)/B · R/G · G/B · B/R · log₁₀(I₀/I) · √(ΔR²+ΔG²+ΔB²)
 
-## Design
-Swiss / High-contrast light theme (from `design_guidelines.json`): #FFFFFF background, #002FA7 primary, sharp borders, rounded-md (6px), bold monospace-style numeric data.
+Blank-requiring: `I₀−I`, `log₁₀(I₀/I)`, Euclidean-Δ.
+
+## Statistics
+- **Linear regression**: `y = slope · x + intercept`
+- **R²** = (Σ(x−x̄)(y−ȳ))² / (Σ(x−x̄)² · Σ(y−ȳ)²) — Pearson²
+- **SE of regression** = √(SSres / (n − 2))
+- **LoD** = 3 · SE / |slope|  (user-specified multiplier)
+- **LoQ** = 10 · SE / |slope|
 
 ## Tech Stack
-- Frontend: Expo SDK 54, expo-router (tabs + stack), react-native-chart-kit, expo-image-picker, AsyncStorage.
-- Backend: FastAPI + Pillow for RGB averaging.
+- **Frontend**: Expo SDK 54, expo-router (Stack + Tabs), react-native-svg (scatter plot), react-native-chart-kit (in deps, unused now), expo-image-picker, AsyncStorage.
+- **Backend**: FastAPI + Pillow for region-averaged RGB extraction.
 - All backend routes prefixed with `/api`.
 
+## Persistence (AsyncStorage)
+- `chem_rgb_calibration_v2` — calibration samples
+- `chem_rgb_predictions_v2` — past predictions
+
+## Navigation
+- Tabs: **Calibrate** (default) · **Predict** · **Analysis**
+- Modal: **analyze.tsx** (mode=calibrate|predict)
+
+## Design
+Swiss high-contrast light theme (`/app/design_guidelines.json`): #FFFFFF background, #002FA7 primary, flat 6px corners, bold numeric data.
+
 ## Future Enhancements
-- Calibration curve fit (linear regression over concentration vs absorbance)
-- CSV export of sample history
-- Multiple chromophore tracking per experiment
+- Multi-analyte profiles (Paclitaxel, other analytes) with separate calibration curves
+- Additional sensitivity metrics (ΔR+ΔG+ΔB, √(ΔR²+ΔG²+ΔB² + ...) from top of researcher's notes)
+- CSV export of calibration & predictions
+- Cloud sync of calibration profiles across devices
