@@ -27,6 +27,15 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
+          title: "Home",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="home" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="calibrate"
+        options={{
           title: "Calibrate",
           tabBarIcon: ({ color, size }) => (
             <Feather name="sliders" size={size} color={color} />
