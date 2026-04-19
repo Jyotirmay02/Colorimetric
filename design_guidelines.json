@@ -1,0 +1,101 @@
+{
+  "project_context": {
+    "domain": "Chemistry Research / Scientific Tool",
+    "theme": "Light",
+    "archetype": "4_Swiss_High_Contrast",
+    "vibe": "Objective, Precise, Functional, Clinical but Modern"
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Outfit",
+      "body": "IBM Plex Sans",
+      "mono": "JetBrains Mono"
+    },
+    "hierarchy": {
+      "h1": "text-4xl tracking-tighter font-black text-[#0A0A0A]",
+      "h2": "text-2xl tracking-tight font-bold text-[#0A0A0A]",
+      "h3": "text-xl font-semibold text-[#0A0A0A]",
+      "body": "text-base leading-relaxed text-[#4B5563]",
+      "mono_data": "text-3xl font-mono font-bold tracking-tight text-[#0A0A0A]",
+      "label": "text-xs uppercase tracking-[0.2em] font-bold text-[#6B7280]"
+    }
+  },
+  "colors": {
+    "background": "#FFFFFF",
+    "surface_card": "#F8F9FA",
+    "primary": "#002FA7",
+    "primary_hover": "#00227A",
+    "text_main": "#0A0A0A",
+    "text_muted": "#4B5563",
+    "border": "#E5E7EB",
+    "data_metrics": {
+      "red": "#EF4444",
+      "green": "#22C55E",
+      "blue": "#3B82F6",
+      "absorbance": "#FFC300"
+    }
+  },
+  "layout_spacing": {
+    "system": "Generous Spacing / Control Room Grid (Mode B)",
+    "container_padding": "p-6 md:p-8",
+    "gap_standard": "gap-4",
+    "border_radius": "rounded-md",
+    "grid_strategy": "Dense grid for data (Bento style). 3 equal columns for R,G,B values. Full width for charts and formula computation."
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#002FA7] text-white rounded-md h-14 font-bold text-lg flex items-center justify-center transition-colors active:scale-[0.98]",
+      "secondary": "bg-transparent border-2 border-[#E5E7EB] text-[#0A0A0A] rounded-md h-14 font-bold text-lg flex items-center justify-center transition-colors"
+    },
+    "cards": {
+      "base": "bg-[#F8F9FA] border border-[#E5E7EB] rounded-md p-6 flex flex-col justify-between",
+      "glassmorphism": "bg-white/70 backdrop-blur-xl border border-white/40 shadow-sm rounded-md p-6"
+    },
+    "inputs": {
+      "formula_editor": "font-mono text-sm bg-[#0A0A0A] text-[#22C55E] p-4 rounded-md border border-[#374151] w-full"
+    },
+    "charts": {
+      "library": "victory-native or react-native-chart-kit",
+      "bar_chart_style": "Flat top bars, no rounded corners. Colors map exactly to data_metrics (Red, Green, Blue).",
+      "line_chart_style": "Straight lines (no bezier curves) to emphasize precision. Use #002FA7 for the line with solid dot markers for each sample."
+    },
+    "camera_upload_zone": {
+      "style": "border-2 border-dashed border-[#E5E7EB] bg-[#F8F9FA] h-64 flex items-center justify-center rounded-md relative overflow-hidden"
+    }
+  },
+  "media_urls": {
+    "onboarding_background": {
+      "url": "https://images.pexels.com/photos/9628826/pexels-photo-9628826.jpeg",
+      "description": "Scientist conducting a laboratory experiment. Apply a white/gray gradient overlay (bg-white/80) so text remains highly legible."
+    },
+    "empty_state_history": {
+      "url": "https://images.unsplash.com/photo-1764504985766-14ea5760a6fa?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwyfHxjb2xvcmZ1bCUyMGNoZW1pY2FsJTIwc29sdXRpb24lMjB2aWFsc3xlbnwwfHx8fDE3NzY1NjU2MTd8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Colorful chemical solution vials. Use as an opacity-10 background image behind the empty history list to add flavor without distraction."
+    }
+  },
+  "screens_architecture": {
+    "CaptureUpload": {
+      "layout": "Large central upload/camera zone. Bottom fixed CTA: 'Analyze Image'. Use clear, large typography.",
+      "visuals": "Minimalist UI. Let the camera viewfinder take up 70% of the screen height if active."
+    },
+    "Analysis": {
+      "layout": "Top: Image preview with interactive crosshair (for manual tap-to-extract region). Middle: Bento grid of 3 cards for R, G, B values. Bottom: Formula editor component and a prominent card showing the computed Absorbance value.",
+      "interactions": "Tapping the image instantly updates the RGB bento boxes. Formula must be editable."
+    },
+    "HistoryDashboard": {
+      "layout": "Top half: Line chart (Absorbance over time/samples). Bottom half: Scrollable list of past samples. Each list item should show a tiny color swatch of the extracted RGB."
+    }
+  },
+  "accessibility_and_testing": {
+    "contrast": "Ensure all text over gray surfaces has a minimum 4.5:1 ratio (WCAG AA). Do not use light gray text on light gray backgrounds.",
+    "test_ids": "All interactive elements MUST include data-testid. Examples: data-testid='upload-button', data-testid='formula-input', data-testid='rgb-value-red'."
+  },
+  "instructions_to_main_agent": [
+    "This is an Expo React Native app. Map the provided Tailwind aesthetic guidelines (colors, fonts, spacing) to StyleSheet objects or NativeWind.",
+    "For icons, use @expo/vector-icons (prefer Feather or Ionicons for sharp, unrounded lines).",
+    "Do NOT use bubbly/soft UI elements. The user is a chemistry researcher; the UI must look like a high-end lab instrument (Swiss style).",
+    "For image pixel extraction in Expo, consider using expo-image-manipulator, a web-view canvas trick, or an external library compatible with Expo to get RGB data from specific X/Y coordinates on tap.",
+    "Use AsyncStorage for the local sample history list.",
+    "The default computation formula must be clearly editable by the researcher."
+  ]
+}
