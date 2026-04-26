@@ -101,3 +101,75 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  Chemistry research RGB-from-image colorimetric tool. Calibrate via images of known concentrations,
+  fit ~50 colorimetric equations, predict unknown concentrations, plot best fits, export data to CSV.
+  Local-only (AsyncStorage). No auth.
+
+frontend:
+  - task: "Multi-equation overlay graph (up to 6) on Analysis tab"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/(tabs)/analysis.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "MultiScatter component renders top-N filtered fits with distinct palette + legend; combined extents normalize axes. Verified via screenshot — page loads cleanly."
+
+  - task: "CSV filename uses date-time and rich data export"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/(tabs)/analysis.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "Filenames: calibrate-analysis-YYYY-MM-DD-HHMMSS.csv / predict-analysis-...csv. Calibrate CSV now has 3 sections: ranked equations (R²/SE/LoD/slope/intercept), sample inputs (with log10_conc), and per-equation long-format data points (x, y_raw, y_used, y_predicted, residual, used_in_fit). Predict CSV has analogous 3 sections including predicted_uM per (prediction × equation)."
+
+  - task: "Remove icons from Calibrate/Predict analysis sub-tabs"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/(tabs)/analysis.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "Confirmed via screenshot — no icons on CALIBRATE ANALYSIS / PREDICT ANALYSIS / CONC vs METRIC / LOG CONC vs LOG METRIC tabs."
+
+  - task: "Blanks excluded from regression fit"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/metrics.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "fitAllMetrics filters samples with isBlank=true OR concentration=0 OR excluded=true before regression. Blanks are only used for I0 reference and σ_blank for IUPAC LoD."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.4"
+  test_sequence: 0
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Multi-equation overlay graph (up to 6) on Analysis tab"
+    - "CSV filename uses date-time and rich data export"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "manual_verification"
+
+agent_communication:
+    -agent: "main"
+    -message: "Resumed work from msg 210. Existing implementation already had multi-graph overlay + sub-tab icon removal + dated CSV filenames. Enhanced both calibrate and predict CSV exports with a third 'long-format' section that includes every (sample × equation) data point with x_value, y_raw, y_used (log10 transformed where applicable), y_predicted, residual, used_in_fit flag, plus per-equation R²/SE/LoD/slope/intercept inline. Confirmed via screenshot the Analysis tab renders correctly with no icons on sub-tabs. User requested manual verification only — no testing agent invoked."
