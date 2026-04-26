@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
+  Animated,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -65,6 +67,20 @@ export default function AnalysisScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"calibrate" | "predict">("calibrate");
   const [selectedPredictionId, setSelectedPredictionId] = useState<string | null>(null);
+  const [excludedMetricIds, setExcludedMetricIds] = useState<Set<string>>(new Set());
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  // Animated slider for the top view tabs
+  const slideX = useRef(new Animated.Value(0)).current;
+  const switchView = (m: "calibrate" | "predict") => {
+    setViewMode(m);
+    Animated.spring(slideX, {
+      toValue: m === "calibrate" ? 0 : 1,
+      useNativeDriver: true,
+      tension: 90,
+      friction: 12,
+    }).start();
+  };
 
   const load = useCallback(async () => {
     setSamples(await getCalSamples());
@@ -73,7 +89,7 @@ export default function AnalysisScreen() {
     setPredictions(ps);
     const focus = await consumeAnalysisFocus();
     if (focus?.predictionId) {
-      setViewMode("predict");
+      switchView("predict");
       setSelectedPredictionId(focus.predictionId);
     }
   }, []);
@@ -110,9 +126,20 @@ export default function AnalysisScreen() {
 
   const [category, setCategory] = useState<"conc-linear" | "logconc-loglinear">("conc-linear");
   const filteredFits = useMemo(
-    () => sortedFits.filter((f) => f.metric.category === category),
-    [sortedFits, category]
+    () => sortedFits.filter((f) => f.metric.category === category && !excludedMetricIds.has(f.metric.id)),
+    [sortedFits, category, excludedMetricIds]
   );
+
+  const toggleMetricExcluded = (id: string) => {
+    setExcludedMetricIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const includedInCategory = METRICS.filter((m) => m.category === category);
+  const includedCount = includedInCategory.filter((m) => !excludedMetricIds.has(m.id)).length;
 
   const selected = useMemo(() => {
     if (filteredFits.length === 0) return null;
@@ -164,12 +191,29 @@ export default function AnalysisScreen() {
           {METRICS_TOTAL} colorimetric equations grouped by fit type. Tap a tab to switch.
         </Text>
 
-        {/* Top-level view tabs */}
-        <View style={styles.catRow}>
+        {/* Top-level view tabs — animated slider */}
+        <View style={styles.viewTabsWrap}>
+          <Animated.View
+            style={[
+              styles.viewSlider,
+              {
+                transform: [
+                  {
+                    translateX: slideX.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ["0%", "100%"],
+                    }),
+                  },
+                ],
+              },
+            ]}
+            pointerEvents="none"
+          />
           <TouchableOpacity
-            onPress={() => setViewMode("calibrate")}
-            style={[styles.viewTab, viewMode === "calibrate" && styles.viewTabActive]}
+            onPress={() => switchView("calibrate")}
+            style={styles.viewTabAnim}
             testID="view-calibrate"
+            activeOpacity={0.85}
           >
             <Feather name="sliders" size={13} color={viewMode === "calibrate" ? "#FFFFFF" : "#0A0A0A"} />
             <Text style={[styles.viewTabText, viewMode === "calibrate" && styles.viewTabTextActive]}>
@@ -177,9 +221,10 @@ export default function AnalysisScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => setViewMode("predict")}
-            style={[styles.viewTab, viewMode === "predict" && styles.viewTabActive]}
+            onPress={() => switchView("predict")}
+            style={styles.viewTabAnim}
             testID="view-predict"
+            activeOpacity={0.85}
           >
             <Feather name="target" size={13} color={viewMode === "predict" ? "#FFFFFF" : "#0A0A0A"} />
             <Text style={[styles.viewTabText, viewMode === "predict" && styles.viewTabTextActive]}>
@@ -198,7 +243,7 @@ export default function AnalysisScreen() {
         ) : (
         <>
 
-        {/* Category tabs */}
+        {/* Category tabs + filter btn */}
         <View style={styles.catRow}>
           <TouchableOpacity
             onPress={() => setCategory("conc-linear")}
@@ -217,6 +262,14 @@ export default function AnalysisScreen() {
             <Text style={[styles.catTabText, category === "logconc-loglinear" && styles.catTabTextActive]}>
               LOG CONC vs LOG METRIC
             </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setFilterOpen(true)}
+            style={styles.filterBtn}
+            testID="filter-eq-btn"
+          >
+            <Feather name="filter" size={13} color="#FFFFFF" />
+            <Text style={styles.filterBtnText}>{includedCount}/{includedInCategory.length}</Text>
           </TouchableOpacity>
         </View>
 
@@ -388,6 +441,67 @@ export default function AnalysisScreen() {
         )}
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      {/* Equation filter modal */}
+      <Modal visible={filterOpen} transparent animationType="slide" onRequestClose={() => setFilterOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHead}>
+              <Text style={styles.modalTitle}>FILTER · {category === "conc-linear" ? "LINEAR" : "LOG-LOG"}</Text>
+              <TouchableOpacity onPress={() => setFilterOpen(false)} hitSlop={10} testID="filter-close">
+                <Feather name="x" size={20} color="#0A0A0A" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={() => {
+                  setExcludedMetricIds((prev) => {
+                    const next = new Set(prev);
+                    includedInCategory.forEach((m) => next.delete(m.id));
+                    return next;
+                  });
+                }}
+                style={styles.modalBtn}
+                testID="filter-all"
+              >
+                <Text style={styles.modalBtnText}>ALL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setExcludedMetricIds((prev) => {
+                    const next = new Set(prev);
+                    includedInCategory.forEach((m) => next.add(m.id));
+                    return next;
+                  });
+                }}
+                style={styles.modalBtn}
+                testID="filter-none"
+              >
+                <Text style={styles.modalBtnText}>NONE</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 460 }}>
+              {includedInCategory.map((m) => {
+                const checked = !excludedMetricIds.has(m.id);
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    onPress={() => toggleMetricExcluded(m.id)}
+                    style={styles.modalRow}
+                    testID={`filter-row-${m.id}`}
+                    activeOpacity={0.85}
+                  >
+                    <View style={[styles.checkBox, checked && styles.checkBoxOn]}>
+                      {checked && <Feather name="check" size={12} color="#FFFFFF" />}
+                    </View>
+                    <Text style={styles.modalRowText} numberOfLines={2}>{m.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -446,7 +560,31 @@ function PredictAnalysisView({
 
   return (
     <View>
-      <Text style={[styles.sectionLabel, { marginTop: 4 }]}>SELECT PREDICTION</Text>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+        <Text style={styles.sectionLabel}>SELECT PREDICTION</Text>
+        {selected && rows.length > 0 && (
+          <TouchableOpacity
+            onPress={async () => {
+              const header = ["rank", "equation", "R2", "predicted_uM"];
+              const csvRows = rows.map((r, i) => [
+                i + 1,
+                csvEscape(r.label),
+                r.r2.toFixed(6),
+                Number.isFinite(r.value) ? r.value.toFixed(6) : "",
+              ]);
+              let csv = `# Prediction analysis for ${selected.id}\n`;
+              csv += `# RGB: R=${selected.r},G=${selected.g},B=${selected.b},HEX=${selected.hex}\n\n`;
+              csv += header.join(",") + "\n" + csvRows.map((r) => r.join(",")).join("\n");
+              await exportCSV(`predict-analysis-${selected.id}.csv`, csv);
+            }}
+            style={styles.exportBtn}
+            testID="export-predict-csv"
+          >
+            <Feather name="download" size={13} color="#FFFFFF" />
+            <Text style={styles.exportText}>CSV</Text>
+          </TouchableOpacity>
+        )}
+      </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
         {predictions.map((p) => {
           const isActive = selected?.id === p.id;
@@ -769,6 +907,91 @@ const styles = StyleSheet.create({
   predChipSwatch: { width: 16, height: 16, borderRadius: 3, borderWidth: 1, borderColor: "rgba(0,0,0,0.1)" },
   predChipText: { fontSize: 12, fontWeight: "800", color: "#0A0A0A" },
   predEqValue: { fontSize: 14, fontWeight: "900", color: "#0A0A0A", minWidth: 80, textAlign: "right" },
+  viewTabsWrap: {
+    flexDirection: "row",
+    backgroundColor: "#F1F2F5",
+    borderRadius: 8,
+    padding: 4,
+    marginBottom: 14,
+    position: "relative",
+    overflow: "hidden",
+  },
+  viewSlider: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    width: "50%",
+    height: "100%",
+    backgroundColor: "#002FA7",
+    borderRadius: 6,
+    marginRight: 4,
+  },
+  viewTabAnim: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    zIndex: 2,
+  },
+  filterBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#0A0A0A",
+    paddingHorizontal: 10,
+    paddingVertical: 11,
+    borderRadius: 6,
+  },
+  filterBtnText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900", letterSpacing: 1 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(10,10,10,0.45)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 30,
+  },
+  modalHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  modalTitle: { fontSize: 13, fontWeight: "900", letterSpacing: 1.6, color: "#0A0A0A" },
+  modalActions: { flexDirection: "row", gap: 8, marginBottom: 12 },
+  modalBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    backgroundColor: "#EEF2FF",
+  },
+  modalBtnText: { color: "#002FA7", fontWeight: "900", fontSize: 11, letterSpacing: 1.2 },
+  modalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  checkBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: "#9CA3AF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkBoxOn: { backgroundColor: "#002FA7", borderColor: "#002FA7" },
+  modalRowText: { flex: 1, fontSize: 13, color: "#0A0A0A", fontWeight: "600" },
   title: {
     fontSize: 40,
     color: "#0A0A0A",
