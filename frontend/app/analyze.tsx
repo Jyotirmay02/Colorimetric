@@ -21,7 +21,8 @@ import {
   getCalSamples,
   getSettings,
   saveSettings,
-  selectBlankSample,
+  getBlanks,
+  avgBlankRGB,
   activeSamples,
   RoiMode,
   Settings,
@@ -31,6 +32,7 @@ import {
   defaultEquationValue,
   DEFAULT_EQUATION_LABEL,
   fitAllMetrics,
+  blankSigmas,
   predictConcentration,
 } from "../src/metrics";
 import { pickFromGallery, takePhoto } from "../src/imagePicker";
@@ -79,14 +81,20 @@ export default function AnalyzeScreen() {
       const cs = await getCalSamples();
       const actives = activeSamples(cs);
       if (actives.length >= 2) {
-        const blank = selectBlankSample(cs);
-        blankRef.current = blank ? { r: blank.r, g: blank.g, b: blank.b } : undefined;
+        const blanks = getBlanks(cs);
+        const blankAvg = avgBlankRGB(cs);
+        blankRef.current = blankAvg ?? undefined;
+        const sigmas = blanks.length >= 2
+          ? blankSigmas(blanks.map((b) => ({ r: b.r, g: b.g, b: b.b })), blankAvg ?? undefined)
+          : undefined;
         const fits = fitAllMetrics(
           actives.map((s) => ({
             concentration: s.concentration,
             rgb: { r: s.r, g: s.g, b: s.b },
+            excluded: s.excluded,
           })),
-          blankRef.current
+          blankRef.current,
+          sigmas
         );
         setCalFits(fits);
         setHasCal(true);
@@ -157,17 +165,18 @@ export default function AnalyzeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [image, imgBox.w, imgBox.h, roiMode]);
 
+  // Lock state: when ROI mode is "locked" AND we already have a lastRoi,
+  // ROI tap and region size are disabled (immutable for consistency).
+  const isLocked = roiMode === "locked" && !!settings?.lastRoi;
+
   const onImagePress = (e: any) => {
     if (!image) return;
-    if (roiMode !== "manual" && roiMode !== "locked") {
-      // Tap ignored for 'center' — let user know via haptic / alert? just allow
-    }
+    if (isLocked) return; // ignore taps when locked
     const { locationX, locationY } = e.nativeEvent;
     const xNorm = Math.max(0, Math.min(1, locationX / imgBox.w));
     const yNorm = Math.max(0, Math.min(1, locationY / imgBox.h));
     setTapPoint({ x: locationX, y: locationY });
     callExtract(xNorm, yNorm);
-    // remember last ROI so 'locked' mode can reuse
     saveSettings({ lastRoi: { x: xNorm, y: yNorm } }).then((s) => setSettings(s));
   };
 
@@ -176,11 +185,18 @@ export default function AnalyzeScreen() {
     setSettings(next);
   };
 
+  const resetLock = async () => {
+    const next = await saveSettings({ lastRoi: null });
+    setSettings(next);
+    setTapPoint(null);
+    setRgb(null);
+  };
+
   const setRegionSize = async (size: number) => {
+    if (isLocked) return;
     const next = await saveSettings({ regionSize: size });
     setSettings(next);
     if (tapPoint && imgBox.w > 1) {
-      // re-sample at current point with new size
       callExtract(tapPoint.x / imgBox.w, tapPoint.y / imgBox.h);
     }
   };
@@ -392,16 +408,23 @@ export default function AnalyzeScreen() {
         <Text style={styles.roiHint}>
           {roiMode === "center" &&
             "Uses the center of every image (best when the vial is framed in a black box)."}
-          {roiMode === "locked" &&
-            (settings.lastRoi
-              ? `Reuses locked ROI at (${(settings.lastRoi.x * 100).toFixed(0)}%, ${(settings.lastRoi.y * 100).toFixed(0)}%). Tap the image to update.`
-              : "Tap once on an image — that position is reused for every future sample.")}
+          {roiMode === "locked" && isLocked && (
+            `Locked at (${(settings.lastRoi!.x * 100).toFixed(0)}%, ${(settings.lastRoi!.y * 100).toFixed(0)}%) · ROI size frozen.`
+          )}
+          {roiMode === "locked" && !isLocked &&
+            "Tap once on an image — that position is locked for every future sample."}
           {roiMode === "manual" && "Tap a region of interest on every image."}
         </Text>
+        {isLocked && (
+          <TouchableOpacity onPress={resetLock} style={styles.resetLockBtn} testID="reset-lock-btn">
+            <Feather name="unlock" size={12} color="#EF4444" />
+            <Text style={styles.resetLockText}>RESET LOCK</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Region size pills */}
         <Text style={[styles.sectionLabel, { marginTop: 12 }]}>
-          ROI SIZE · {Math.round(regionSize * 100)}%
+          ROI SIZE · {Math.round(regionSize * 100)}%{isLocked ? " · LOCKED" : ""}
         </Text>
         <View style={styles.pillRow}>
           {[
@@ -413,10 +436,12 @@ export default function AnalyzeScreen() {
             <TouchableOpacity
               key={label}
               onPress={() => setRegionSize(v)}
+              disabled={isLocked}
               style={[
                 styles.pill,
                 { flex: 1 },
                 regionSize === v && styles.pillActive,
+                isLocked && { opacity: 0.45 },
               ]}
               testID={`roi-size-${label}`}
               activeOpacity={0.85}
@@ -758,6 +783,23 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     marginTop: 6,
     lineHeight: 15,
+  },
+  resetLockBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: "#FEE2E2",
+    borderRadius: 4,
+    marginTop: 6,
+  },
+  resetLockText: {
+    fontSize: 10,
+    color: "#EF4444",
+    fontWeight: "900",
+    letterSpacing: 1.4,
   },
   pickCol: { gap: 10, marginBottom: 20 },
   primaryBtn: {

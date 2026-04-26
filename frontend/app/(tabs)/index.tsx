@@ -13,9 +13,11 @@ import { useFocusEffect, useRouter } from "expo-router";
 import {
   getCalSamples,
   getPredictions,
-  selectBlankSample,
+  getBlanks,
+  avgBlankRGB,
+  activeSamples,
 } from "../../src/storage";
-import { bestMetric, fitAllMetrics } from "../../src/metrics";
+import { bestMetric, blankSigmas, fitAllMetrics } from "../../src/metrics";
 import type { CalSample, Prediction } from "../../src/storage";
 
 export default function HomeScreen() {
@@ -42,16 +44,21 @@ export default function HomeScreen() {
   );
 
   const { best, hasBlank } = useMemo(() => {
-    if (cal.length < 2) return { best: null, hasBlank: false };
-    const blank = selectBlankSample(cal);
+    const active = activeSamples(cal);
+    if (active.length < 2) return { best: null, hasBlank: false };
+    const blanks = getBlanks(cal);
+    const blankAvg = avgBlankRGB(cal);
+    const sigmas = blanks.length >= 2 ? blankSigmas(blanks.map((b) => ({ r: b.r, g: b.g, b: b.b })), blankAvg ?? undefined) : undefined;
     const fits = fitAllMetrics(
-      cal.map((s) => ({
+      active.map((s) => ({
         concentration: s.concentration,
         rgb: { r: s.r, g: s.g, b: s.b },
+        excluded: s.excluded,
       })),
-      blank ? { r: blank.r, g: blank.g, b: blank.b } : undefined
+      blankAvg ?? undefined,
+      sigmas
     );
-    return { best: bestMetric(fits), hasBlank: !!blank };
+    return { best: bestMetric(fits), hasBlank: !!blankAvg };
   }, [cal]);
 
   const bestR2 = best?.fit?.r2;

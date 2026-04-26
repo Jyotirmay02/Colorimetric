@@ -15,14 +15,15 @@ import {
   getCalSamples,
   getPredictions,
   deletePrediction,
-  selectBlankSample,
+  getBlanks,
+  avgBlankRGB,
+  activeSamples,
 } from "../../src/storage";
 import {
   bestMetric,
+  blankSigmas,
   fitAllMetrics,
-  predictConcentration,
   DEFAULT_EQUATION_LABEL,
-  defaultEquationValue,
 } from "../../src/metrics";
 import type { CalSample, Prediction } from "../../src/storage";
 
@@ -54,20 +55,24 @@ export default function PredictScreen() {
   );
 
   const { hasCalibration, bestInfo } = useMemo(() => {
-    if (cal.length < 2) return { hasCalibration: false, bestInfo: null };
-    const blank = selectBlankSample(cal);
+    const active = activeSamples(cal);
+    if (active.length < 2) return { hasCalibration: false, bestInfo: null };
+    const blanks = getBlanks(cal);
+    const blankAvg = avgBlankRGB(cal);
+    const sigmas = blanks.length >= 2
+      ? blankSigmas(blanks.map((b) => ({ r: b.r, g: b.g, b: b.b })), blankAvg ?? undefined)
+      : undefined;
     const fits = fitAllMetrics(
-      cal.map((s) => ({
+      active.map((s) => ({
         concentration: s.concentration,
         rgb: { r: s.r, g: s.g, b: s.b },
+        excluded: s.excluded,
       })),
-      blank ? { r: blank.r, g: blank.g, b: blank.b } : undefined
+      blankAvg ?? undefined,
+      sigmas
     );
     const b = bestMetric(fits);
-    return {
-      hasCalibration: !!(b && b.fit),
-      bestInfo: b,
-    };
+    return { hasCalibration: !!(b && b.fit), bestInfo: b };
   }, [cal]);
 
   const startPredict = () => {
@@ -123,9 +128,21 @@ export default function PredictScreen() {
           <Text style={styles.primaryBtnText}>MEASURE NEW SAMPLE</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          onPress={() => router.push("/analysis")}
+          style={styles.linkRow}
+          testID="goto-predict-analysis"
+          activeOpacity={0.85}
+        >
+          <Feather name="activity" size={14} color="#002FA7" />
+          <Text style={styles.linkText}>VIEW PREDICT ANALYSIS</Text>
+          <Feather name="chevron-right" size={14} color="#002FA7" />
+        </TouchableOpacity>
+
         <Text style={styles.hint}>
           You'll select a region of interest on the image. RGB is extracted
-          from that region and converted to concentration.
+          from that region and converted to concentration. Last 10
+          predictions are kept here.
         </Text>
 
         {/* Predictions list */}
@@ -239,6 +256,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
     letterSpacing: 1.6,
+  },
+  linkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#EEF2FF",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+    marginTop: 10,
+  },
+  linkText: {
+    color: "#002FA7",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1.4,
   },
   hint: {
     fontSize: 12,

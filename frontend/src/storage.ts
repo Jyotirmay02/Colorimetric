@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export const CAL_KEY = "chem_rgb_calibration_v2";
 export const PRED_KEY = "chem_rgb_predictions_v2";
 export const SETTINGS_KEY = "chem_rgb_settings_v1";
+export const PRED_MAX = 10;
 
 export type CalSample = {
   id: string;
@@ -13,9 +14,9 @@ export type CalSample = {
   g: number;
   b: number;
   hex: string;
-  concentration: number; // in micromolar (µM)
+  concentration: number; // µM
   isBlank?: boolean;
-  excluded?: boolean; // keep but drop from fit
+  excluded?: boolean;
 };
 
 export type Prediction = {
@@ -29,15 +30,15 @@ export type Prediction = {
   bestMetricId: string;
   bestMetricLabel: string;
   bestR2: number;
-  predictedConcentration: number; // in µM
+  predictedConcentration: number;
   fallback?: boolean;
 };
 
 export type RoiMode = "manual" | "center" | "locked";
 export type Settings = {
   roiMode: RoiMode;
-  lastRoi: { x: number; y: number } | null; // normalized 0..1
-  regionSize: number; // 0..0.5, fraction of min(w,h)
+  lastRoi: { x: number; y: number } | null;
+  regionSize: number;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -54,7 +55,6 @@ async function writeList<T>(key: string, list: T[]) {
   await AsyncStorage.setItem(key, JSON.stringify(list));
 }
 
-// Settings
 export async function getSettings(): Promise<Settings> {
   const raw = await AsyncStorage.getItem(SETTINGS_KEY);
   if (!raw) return { ...DEFAULT_SETTINGS };
@@ -87,13 +87,16 @@ export async function updateCalSample(id: string, patch: Partial<CalSample>) {
   await writeList(CAL_KEY, next);
   return next;
 }
-export async function setBlank(id: string) {
+// Toggle individual blank flag (multi-blank capable)
+export async function toggleBlankFlag(id: string) {
   const list = await getCalSamples();
-  const next = list.map((s) => ({ ...s, isBlank: s.id === id }));
+  const next = list.map((s) =>
+    s.id === id ? { ...s, isBlank: !s.isBlank } : s
+  );
   await writeList(CAL_KEY, next);
   return next;
 }
-export async function clearBlank() {
+export async function clearAllBlanks() {
   const list = await getCalSamples();
   const next = list.map((s) => ({ ...s, isBlank: false }));
   await writeList(CAL_KEY, next);
@@ -116,30 +119,36 @@ export async function clearCal() {
   await AsyncStorage.removeItem(CAL_KEY);
 }
 
-// Blank resolution:
-// 1. Sample explicitly marked isBlank
-// 2. Any sample with concentration === 0 (auto)
-export function selectBlankSample(list: CalSample[]): CalSample | null {
-  const manual = list.find((s) => s.isBlank);
-  if (manual) return manual;
-  const zero = list.find((s) => s.concentration === 0);
-  return zero || null;
+// All blanks: explicit isBlank=true; if none, fall back to all conc=0 samples.
+export function getBlanks(list: CalSample[]): CalSample[] {
+  const explicit = list.filter((s) => s.isBlank);
+  if (explicit.length > 0) return explicit;
+  return list.filter((s) => s.concentration === 0);
 }
-
-// Returns only the samples that actually participate in the fit (not excluded).
+export function avgBlankRGB(list: CalSample[]): { r: number; g: number; b: number } | null {
+  const blanks = getBlanks(list);
+  if (blanks.length === 0) return null;
+  const r = blanks.reduce((a, s) => a + s.r, 0) / blanks.length;
+  const g = blanks.reduce((a, s) => a + s.g, 0) / blanks.length;
+  const b = blanks.reduce((a, s) => a + s.b, 0) / blanks.length;
+  return { r, g, b };
+}
 export function activeSamples(list: CalSample[]): CalSample[] {
   return list.filter((s) => !s.excluded);
 }
 
-// Predictions
+// Predictions (cap at PRED_MAX = 10, FIFO)
 export async function getPredictions(): Promise<Prediction[]> {
   return readList<Prediction>(PRED_KEY);
 }
 export async function addPrediction(p: Prediction) {
   const list = await getPredictions();
   list.push(p);
-  await writeList(PRED_KEY, list);
-  return list;
+  // keep only newest PRED_MAX
+  list.sort((a, b) => b.createdAt - a.createdAt);
+  const trimmed = list.slice(0, PRED_MAX);
+  await writeList(PRED_KEY, trimmed);
+  return trimmed;
 }
 export async function deletePrediction(id: string) {
   const list = (await getPredictions()).filter((s) => s.id !== id);

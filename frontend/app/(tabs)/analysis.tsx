@@ -19,8 +19,9 @@ import Svg, {
   Stop,
   Text as SvgText,
 } from "react-native-svg";
-import { getCalSamples, selectBlankSample } from "../../src/storage";
-import { fitAllMetrics, MetricFit } from "../../src/metrics";
+import { getCalSamples, getBlanks, avgBlankRGB, activeSamples } from "../../src/storage";
+import { fitAllMetrics, blankSigmas, MetricFit, METRICS } from "../../src/metrics";
+const METRICS_TOTAL = METRICS.length;
 import type { CalSample } from "../../src/storage";
 
 const screenW = Dimensions.get("window").width;
@@ -76,26 +77,58 @@ export default function AnalysisScreen() {
   );
 
   const sortedFits = useMemo<MetricFit[]>(() => {
-    if (samples.length < 2) return [];
-    const blank = selectBlankSample(samples);
+    const active = activeSamples(samples);
+    if (active.length < 2) return [];
+    const blanks = getBlanks(samples);
+    const blankAvg = avgBlankRGB(samples);
+    const sigmas = blanks.length >= 2
+      ? blankSigmas(blanks.map((b) => ({ r: b.r, g: b.g, b: b.b })), blankAvg ?? undefined)
+      : undefined;
     const fits = fitAllMetrics(
-      samples.map((s) => ({
+      active.map((s) => ({
         concentration: s.concentration,
         rgb: { r: s.r, g: s.g, b: s.b },
+        excluded: s.excluded,
       })),
-      blank ? { r: blank.r, g: blank.g, b: blank.b } : undefined
+      blankAvg ?? undefined,
+      sigmas
     );
     return fits.slice().sort((a, b) => (b.fit?.r2 ?? -1) - (a.fit?.r2 ?? -1));
   }, [samples]);
 
+  const [category, setCategory] = useState<"conc-linear" | "logconc-loglinear">("conc-linear");
+  const filteredFits = useMemo(
+    () => sortedFits.filter((f) => f.metric.category === category),
+    [sortedFits, category]
+  );
+
   const selected = useMemo(() => {
-    if (sortedFits.length === 0) return null;
+    if (filteredFits.length === 0) return null;
     if (selectedId) {
-      const hit = sortedFits.find((f) => f.metric.id === selectedId);
+      const hit = filteredFits.find((f) => f.metric.id === selectedId);
       if (hit) return hit;
     }
-    return sortedFits[0];
-  }, [sortedFits, selectedId]);
+    return filteredFits[0];
+  }, [filteredFits, selectedId]);
+
+  const onExportCSV = async () => {
+    const header = [
+      "rank","equation","category","R2","SE","sigma_source","slope","intercept","LoD_uM","LoQ_uM","n",
+    ];
+    const rows = sortedFits.map((f, i) => f.fit ? [
+      i + 1, csvEscape(f.metric.label), f.metric.category,
+      f.fit.r2.toFixed(6), f.fit.se.toFixed(6), f.fit.sigmaSource,
+      f.fit.slope.toFixed(6), f.fit.intercept.toFixed(6),
+      Number.isFinite(f.fit.lod) ? f.fit.lod.toFixed(6) : "",
+      Number.isFinite(f.fit.loq) ? f.fit.loq.toFixed(6) : "",
+      f.fit.n,
+    ] : [i + 1, csvEscape(f.metric.label), f.metric.category, "", "", "", "", "", "", "", ""]);
+    let csv = header.join(",") + "\n" + rows.map((r) => r.join(",")).join("\n");
+    csv += "\n\n# Calibration samples\n";
+    csv += "id,name,concentration_uM,R,G,B,hex,isBlank,excluded\n";
+    csv += samples.map((s) => [s.id, csvEscape(s.name || ""), s.concentration, s.r, s.g, s.b, s.hex, s.isBlank ? 1 : 0, s.excluded ? 1 : 0].join(",")).join("\n");
+    await exportCSV(`calibrate-analysis-${Date.now()}.csv`, csv);
+  };
 
   const selectedColor = selected ? METRIC_COLORS[selected.metric.id] || "#002FA7" : "#002FA7";
 
@@ -106,11 +139,40 @@ export default function AnalysisScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.label}>COLORIMETRIC · MODELS</Text>
-        <Text style={styles.title}>Analysis</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>Analysis</Text>
+          {samples.length >= 2 && (
+            <TouchableOpacity onPress={onExportCSV} style={styles.exportBtn} testID="export-csv-btn">
+              <Feather name="download" size={13} color="#FFFFFF" />
+              <Text style={styles.exportText}>CSV</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <Text style={styles.subtitle}>
-          14 colorimetric equations ranked by R² of linear fit vs.
-          concentration.
+          {METRICS_TOTAL} colorimetric equations grouped by fit type. Tap a tab to switch.
         </Text>
+
+        {/* Category tabs */}
+        <View style={styles.catRow}>
+          <TouchableOpacity
+            onPress={() => setCategory("conc-linear")}
+            style={[styles.catTab, category === "conc-linear" && styles.catTabActive]}
+            testID="cat-linear"
+          >
+            <Text style={[styles.catTabText, category === "conc-linear" && styles.catTabTextActive]}>
+              CONC vs METRIC
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setCategory("logconc-loglinear")}
+            style={[styles.catTab, category === "logconc-loglinear" && styles.catTabActive]}
+            testID="cat-loglog"
+          >
+            <Text style={[styles.catTabText, category === "logconc-loglinear" && styles.catTabTextActive]}>
+              LOG CONC vs LOG METRIC
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {samples.length < 2 ? (
           <View style={styles.emptyBox} testID="analysis-empty">
@@ -189,9 +251,9 @@ export default function AnalysisScreen() {
 
             {/* List of all fits */}
             <Text style={[styles.sectionLabel, { marginTop: 16 }]}>
-              ALL EQUATIONS · {sortedFits.length}
+              {category === "conc-linear" ? "LINEAR FITS" : "LOG-LOG FITS"} · {filteredFits.length}
             </Text>
-            {sortedFits.map((f, idx) => {
+            {filteredFits.map((f, idx) => {
               const active = f.metric.id === selected?.metric.id;
               const r2 = f.fit?.r2 ?? 0;
               const mColor = METRIC_COLORS[f.metric.id] || "#002FA7";
@@ -472,6 +534,36 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 16,
   },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    marginTop: 4,
+  },
+  exportBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#0A0A0A",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  exportText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900", letterSpacing: 1.4 },
+  catRow: { flexDirection: "row", gap: 8, marginBottom: 14 },
+  catTab: {
+    flex: 1,
+    paddingVertical: 11,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 6,
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  catTabActive: { backgroundColor: "#0A0A0A", borderColor: "#0A0A0A" },
+  catTabText: { fontSize: 10.5, fontWeight: "900", color: "#0A0A0A", letterSpacing: 1.2 },
+  catTabTextActive: { color: "#FFFFFF" },
   title: {
     fontSize: 40,
     color: "#0A0A0A",
