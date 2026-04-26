@@ -30,6 +30,11 @@ import type { CalSample, Prediction } from "../../src/storage";
 
 const screenW = Dimensions.get("window").width;
 
+function fmtTs(d = new Date()) {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
 // Colors per metric id — vibrant palette
 const METRIC_COLORS: Record<string, string> = {
   R: "#EF4444",
@@ -151,11 +156,6 @@ export default function AnalysisScreen() {
     return filteredFits[0];
   }, [filteredFits, selectedId]);
 
-function fmtTs(d = new Date()) {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
-}
-
   const onExportCSV = async () => {
     const ranked = sortedFits.slice();
     const blankAvg = avgBlankRGB(samples);
@@ -179,11 +179,11 @@ function fmtTs(d = new Date()) {
     ]);
 
     // ---------- Section 3: Per-equation data points (long format) ----------
-    // For every (equation, sample) pair: x, y_raw, y_used (for fit), y_predicted, residual.
+    // For every (equation, sample) pair: x, y_raw, y_value (used for fit), y_predicted, residual.
     const ptsHeader = [
       "equation_id","equation_label","category","R2","SE","LoD_uM","slope","intercept",
-      "sample_id","sample_name","concentration_uM","isBlank","excluded","used_in_fit",
-      "x_value","y_raw","y_used","y_predicted","residual",
+      "sample_id","sample_name","isBlank","excluded","used_in_fit",
+      "concentration_uM","y_raw","x_value","y_value","y_predicted","residual",
     ];
     const ptsRows: (string | number)[][] = [];
     for (const f of ranked) {
@@ -201,20 +201,21 @@ function fmtTs(d = new Date()) {
         const xVal = isLog
           ? (s.concentration > 0 ? Math.log10(s.concentration) : NaN)
           : s.concentration;
-        const yUsed = isLog
+        const yVal = isLog
           ? (Number.isFinite(yRaw) && yRaw > 0 ? Math.log10(yRaw) : NaN)
           : yRaw;
         const usedInFit = !s.excluded && !s.isBlank && s.concentration > 0 &&
-          Number.isFinite(xVal) && Number.isFinite(yUsed);
+          Number.isFinite(xVal) && Number.isFinite(yVal);
         const yPred = fit && Number.isFinite(xVal) ? fit.slope * xVal + fit.intercept : NaN;
-        const resid = Number.isFinite(yPred) && Number.isFinite(yUsed) ? yUsed - yPred : NaN;
+        const resid = Number.isFinite(yPred) && Number.isFinite(yVal) ? yVal - yPred : NaN;
         ptsRows.push([
           m.id, csvEscape(m.label), m.category, r2, se, lod, slope, intercept,
-          s.id, csvEscape(s.name || ""), s.concentration,
+          s.id, csvEscape(s.name || ""),
           s.isBlank ? 1 : 0, s.excluded ? 1 : 0, usedInFit ? 1 : 0,
-          Number.isFinite(xVal) ? (xVal as number).toFixed(6) : "",
+          s.concentration,
           Number.isFinite(yRaw) ? yRaw.toFixed(6) : "",
-          Number.isFinite(yUsed) ? (yUsed as number).toFixed(6) : "",
+          Number.isFinite(xVal) ? (xVal as number).toFixed(6) : "",
+          Number.isFinite(yVal) ? (yVal as number).toFixed(6) : "",
           Number.isFinite(yPred) ? yPred.toFixed(6) : "",
           Number.isFinite(resid) ? resid.toFixed(6) : "",
         ]);
@@ -227,7 +228,8 @@ function fmtTs(d = new Date()) {
     csv += "\n\n# Section 2: Calibration samples (raw inputs)\n";
     csv += sampleHeader.join(",") + "\n" + sampleRows.map((r) => r.join(",")).join("\n");
     csv += "\n\n# Section 3: Per-equation data points (long format)\n";
-    csv += "# x_value = concentration (linear) or log10(conc) (log-log).  y_used = y_raw (linear) or log10(y_raw) (log-log).\n";
+    csv += "# concentration_uM = x_raw.  x_value = concentration (linear) or log10(conc) (log-log).\n";
+    csv += "# y_raw = direct equation output.  y_value = y_raw (linear) or log10(y_raw) (log-log) — value used in regression.\n";
     csv += ptsHeader.join(",") + "\n" + ptsRows.map((r) => r.join(",")).join("\n");
     await exportCSV(`calibrate-analysis-${fmtTs()}.csv`, csv);
   };
@@ -243,12 +245,6 @@ function fmtTs(d = new Date()) {
         <Text style={styles.label}>COLORIMETRIC · MODELS</Text>
         <View style={styles.headerRow}>
           <Text style={styles.title}>Analysis</Text>
-          {samples.length >= 2 && (
-            <TouchableOpacity onPress={onExportCSV} style={styles.exportBtn} testID="export-csv-btn">
-              <Feather name="download" size={13} color="#FFFFFF" />
-              <Text style={styles.exportText}>CSV</Text>
-            </TouchableOpacity>
-          )}
         </View>
         <Text style={styles.subtitle}>
           {METRICS_TOTAL} colorimetric equations grouped by fit type. Tap a tab to switch.
@@ -410,9 +406,15 @@ function fmtTs(d = new Date()) {
             )}
 
             {/* List of all fits */}
-            <Text style={[styles.sectionLabel, { marginTop: 16 }]}>
-              {category === "conc-linear" ? "LINEAR FITS" : "LOG-LOG FITS"} · {filteredFits.length}
-            </Text>
+            <View style={styles.sectionLabelRow}>
+              <Text style={styles.sectionLabel}>
+                {category === "conc-linear" ? "LINEAR FITS" : "LOG-LOG FITS"} · {filteredFits.length}
+              </Text>
+              <TouchableOpacity onPress={onExportCSV} style={styles.exportBtn} testID="export-csv-btn">
+                <Feather name="download" size={13} color="#FFFFFF" />
+                <Text style={styles.exportText}>CSV</Text>
+              </TouchableOpacity>
+            </View>
             {filteredFits.map((f, idx) => {
               const active = f.metric.id === selected?.metric.id;
               const r2 = f.fit?.r2 ?? 0;
@@ -627,18 +629,9 @@ function PredictAnalysisView({
           <TouchableOpacity
             onPress={async () => {
               const blankAvg = avgBlankRGB(samples);
-              // ---------- Section 1: Ranked equations from calibration ----------
-              const headerRanked = ["rank","equation_id","equation_label","category","n","R2","SE","sigma_source","slope","intercept","LoD_uM","LoQ_uM"];
               const sorted = fits.slice().sort((a, b) => (b.fit?.r2 ?? -1) - (a.fit?.r2 ?? -1));
-              const ranks = sorted.map((f, i) => f.fit ? [
-                i + 1, f.metric.id, csvEscape(f.metric.label), f.metric.category,
-                f.fit.n, f.fit.r2.toFixed(6), f.fit.se.toFixed(6), f.fit.sigmaSource,
-                f.fit.slope.toFixed(6), f.fit.intercept.toFixed(6),
-                Number.isFinite(f.fit.lod) ? f.fit.lod.toFixed(6) : "",
-                Number.isFinite(f.fit.loq) ? f.fit.loq.toFixed(6) : "",
-              ] : [i + 1, f.metric.id, csvEscape(f.metric.label), f.metric.category, "", "", "", f.error || "no fit", "", "", "", ""]);
 
-              // ---------- Section 2: Predictions (raw inputs + saved-best) ----------
+              // ---------- Section 1: Predictions raw inputs ----------
               const predHeader = ["id","createdAt","R","G","B","hex","savedBestEquation","savedR2","savedConc_uM"];
               const predRows = predictions.map((p) => [
                 p.id, new Date(p.createdAt).toISOString(),
@@ -647,53 +640,49 @@ function PredictAnalysisView({
                 Number.isFinite(p.predictedConcentration) ? p.predictedConcentration.toFixed(6) : "",
               ]);
 
-              // ---------- Section 3: Per-prediction × per-equation (long format) ----------
+              // ---------- Section 2: Per-equation × per-prediction (combined) ----------
               const longHeader = [
-                "equation_id","equation_label","category","R2","SE","LoD_uM","slope","intercept",
+                "equation_id","equation_label","category","R2","slope","intercept",
                 "prediction_id","createdAt","R","G","B","hex",
-                "y_raw","y_used","x_value","predicted_uM",
+                "y_raw","x_value","y_value","predicted_uM",
               ];
               const longRows: (string | number)[][] = [];
               for (const f of sorted) {
                 const m = f.metric;
                 const fit = f.fit;
                 const r2 = fit ? fit.r2.toFixed(6) : "";
-                const se = fit ? fit.se.toFixed(6) : "";
-                const lod = fit && Number.isFinite(fit.lod) ? fit.lod.toFixed(6) : "";
                 const slope = fit ? fit.slope.toFixed(6) : "";
                 const intercept = fit ? fit.intercept.toFixed(6) : "";
                 for (const p of predictions) {
                   const rgb = { r: p.r, g: p.g, b: p.b };
                   const yRaw = m.compute(rgb, blankAvg ?? undefined);
                   const isLog = m.category === "logconc-loglinear";
-                  const yUsed = isLog
+                  const yVal = isLog
                     ? (Number.isFinite(yRaw) && yRaw > 0 ? Math.log10(yRaw) : NaN)
                     : yRaw;
                   let xVal: number = NaN;
                   let predicted: number = NaN;
-                  if (fit && Number.isFinite(yUsed) && fit.slope !== 0) {
-                    xVal = (yUsed - fit.intercept) / fit.slope;
+                  if (fit && Number.isFinite(yVal) && fit.slope !== 0) {
+                    xVal = (yVal - fit.intercept) / fit.slope;
                     predicted = isLog ? Math.pow(10, xVal) : xVal;
                   }
                   longRows.push([
-                    m.id, csvEscape(m.label), m.category, r2, se, lod, slope, intercept,
+                    m.id, csvEscape(m.label), m.category, r2, slope, intercept,
                     p.id, new Date(p.createdAt).toISOString(),
                     p.r, p.g, p.b, p.hex,
                     Number.isFinite(yRaw) ? yRaw.toFixed(6) : "",
-                    Number.isFinite(yUsed) ? (yUsed as number).toFixed(6) : "",
                     Number.isFinite(xVal) ? xVal.toFixed(6) : "",
+                    Number.isFinite(yVal) ? (yVal as number).toFixed(6) : "",
                     Number.isFinite(predicted) ? predicted.toFixed(6) : "",
                   ]);
                 }
               }
 
               let csv = `# Predict Analysis Export\n# Generated: ${new Date().toISOString()}\n# Predictions: ${predictions.length}  Equations: ${METRICS.length}\n# Calibration samples used: ${samples.length}\n\n`;
-              csv += "# Section 1: Ranked equations (from calibration, sorted by R\u00B2)\n";
-              csv += headerRanked.join(",") + "\n" + ranks.map((r) => r.join(",")).join("\n");
-              csv += "\n\n# Section 2: Predictions (raw inputs + saved best at time of prediction)\n";
+              csv += "# Section 1: Predictions (raw inputs + saved best at time of prediction)\n";
               csv += predHeader.join(",") + "\n" + predRows.map((r) => r.join(",")).join("\n");
-              csv += "\n\n# Section 3: Per-prediction \u00D7 per-equation predicted concentrations (long format)\n";
-              csv += "# y_raw = metric value of unknown sample.  y_used = log10(y_raw) for log-log, else y_raw.\n# x_value = (y_used - intercept)/slope.  predicted_uM = 10^x_value (log-log) or x_value (linear).\n";
+              csv += "\n\n# Section 2: Per-equation \u00D7 per-prediction predicted concentrations\n";
+              csv += "# y_raw = metric value of unknown sample.  y_value = log10(y_raw) for log-log, else y_raw.\n# x_value = (y_value - intercept)/slope.  predicted_uM = 10^x_value (log-log) or x_value (linear).\n";
               csv += longHeader.join(",") + "\n" + longRows.map((r) => r.join(",")).join("\n");
               await exportCSV(`predict-analysis-${fmtTs()}.csv`, csv);
             }}
@@ -1299,6 +1288,13 @@ const styles = StyleSheet.create({
     letterSpacing: 2.2,
     fontWeight: "800",
     marginBottom: 10,
+  },
+  sectionLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 16,
+    marginBottom: 6,
   },
   fitRow: {
     flexDirection: "row",
