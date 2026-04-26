@@ -21,6 +21,7 @@ import Svg, {
 } from "react-native-svg";
 import { getCalSamples, getBlanks, avgBlankRGB, activeSamples, getPredictions, consumeAnalysisFocus } from "../../src/storage";
 import { fitAllMetrics, blankSigmas, MetricFit, METRICS, predictConcentration, bestMetric } from "../../src/metrics";
+import { exportCSV, csvEscape } from "../../src/exporter";
 const METRICS_TOTAL = METRICS.length;
 import type { CalSample, Prediction } from "../../src/storage";
 

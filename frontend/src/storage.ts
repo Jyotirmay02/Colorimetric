@@ -155,7 +155,6 @@ export async function deletePrediction(id: string) {
   await writeList(PRED_KEY, list);
   return list;
 }
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const FOCUS_KEY = "chem_rgb_analysis_focus_v1";
 export async function setAnalysisFocus(predictionId: string) {
