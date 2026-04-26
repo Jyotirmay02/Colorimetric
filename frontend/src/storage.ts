@@ -155,6 +155,19 @@ export async function deletePrediction(id: string) {
   await writeList(PRED_KEY, list);
   return list;
 }
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const FOCUS_KEY = "chem_rgb_analysis_focus_v1";
+export async function setAnalysisFocus(predictionId: string) {
+  await AsyncStorage.setItem(FOCUS_KEY, JSON.stringify({ predictionId }));
+}
+export async function consumeAnalysisFocus(): Promise<{ predictionId: string } | null> {
+  const raw = await AsyncStorage.getItem(FOCUS_KEY);
+  if (!raw) return null;
+  await AsyncStorage.removeItem(FOCUS_KEY);
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
 export async function clearPredictions() {
   await AsyncStorage.removeItem(PRED_KEY);
 }

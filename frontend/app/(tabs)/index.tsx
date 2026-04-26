@@ -199,32 +199,7 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Recent predictions */}
-        {preds.length > 0 && (
-          <>
-            <Text style={[styles.sectionLabel, { marginTop: 8 }]}>
-              RECENT PREDICTIONS
-            </Text>
-            {preds.slice(0, 3).map((p) => (
-              <View key={p.id} style={styles.predRow}>
-                <View style={[styles.predDot, { backgroundColor: p.hex }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.predValue}>
-                    {Number.isFinite(p.predictedConcentration)
-                      ? `${p.predictedConcentration.toFixed(3)} µM`
-                      : "—"}
-                  </Text>
-                  <Text style={styles.predMeta} numberOfLines={1}>
-                    via {p.bestMetricLabel}
-                  </Text>
-                </View>
-                <Text style={styles.predR2}>
-                  {p.fallback ? "DEF" : `R² ${p.bestR2.toFixed(3)}`}
-                </Text>
-              </View>
-            ))}
-          </>
-        )}
+        {/* Recent predictions removed — see Predict tab */}
 
         <View style={{ height: 32 }} />
       </ScrollView>

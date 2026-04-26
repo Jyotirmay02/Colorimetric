@@ -189,6 +189,19 @@ export default function PredictScreen() {
                 <Text style={styles.meta}>
                   R {p.r} · G {p.g} · B {p.b} · {p.hex}
                 </Text>
+                <TouchableOpacity
+                  onPress={async () => {
+                    const { setAnalysisFocus } = await import("../../src/storage");
+                    await setAnalysisFocus(p.id);
+                    router.push("/analysis");
+                  }}
+                  style={styles.analyzeBtn}
+                  testID={`pred-analyze-${p.id}`}
+                  activeOpacity={0.85}
+                >
+                  <Feather name="activity" size={11} color="#002FA7" />
+                  <Text style={styles.analyzeBtnText}>ANALYZE</Text>
+                </TouchableOpacity>
               </View>
               <TouchableOpacity
                 onPress={() => remove(p.id)}
@@ -337,4 +350,21 @@ const styles = StyleSheet.create({
   },
   meta: { fontSize: 12, color: "#4B5563", marginTop: 2 },
   bold: { color: "#0A0A0A", fontWeight: "700" },
+  analyzeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    backgroundColor: "#EEF2FF",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginTop: 6,
+  },
+  analyzeBtnText: {
+    color: "#002FA7",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+  },
 });

@@ -19,10 +19,10 @@ import Svg, {
   Stop,
   Text as SvgText,
 } from "react-native-svg";
-import { getCalSamples, getBlanks, avgBlankRGB, activeSamples } from "../../src/storage";
-import { fitAllMetrics, blankSigmas, MetricFit, METRICS } from "../../src/metrics";
+import { getCalSamples, getBlanks, avgBlankRGB, activeSamples, getPredictions, consumeAnalysisFocus } from "../../src/storage";
+import { fitAllMetrics, blankSigmas, MetricFit, METRICS, predictConcentration, bestMetric } from "../../src/metrics";
 const METRICS_TOTAL = METRICS.length;
-import type { CalSample } from "../../src/storage";
+import type { CalSample, Prediction } from "../../src/storage";
 
 const screenW = Dimensions.get("window").width;
 
@@ -60,10 +60,21 @@ const labelForR2 = (r2: number) => {
 export default function AnalysisScreen() {
   const insets = useSafeAreaInsets();
   const [samples, setSamples] = useState<CalSample[]>([]);
+  const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"calibrate" | "predict">("calibrate");
+  const [selectedPredictionId, setSelectedPredictionId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setSamples(await getCalSamples());
+    const ps = await getPredictions();
+    ps.sort((a, b) => b.createdAt - a.createdAt);
+    setPredictions(ps);
+    const focus = await consumeAnalysisFocus();
+    if (focus?.predictionId) {
+      setViewMode("predict");
+      setSelectedPredictionId(focus.predictionId);
+    }
   }, []);
 
   useEffect(() => {
@@ -151,6 +162,40 @@ export default function AnalysisScreen() {
         <Text style={styles.subtitle}>
           {METRICS_TOTAL} colorimetric equations grouped by fit type. Tap a tab to switch.
         </Text>
+
+        {/* Top-level view tabs */}
+        <View style={styles.catRow}>
+          <TouchableOpacity
+            onPress={() => setViewMode("calibrate")}
+            style={[styles.viewTab, viewMode === "calibrate" && styles.viewTabActive]}
+            testID="view-calibrate"
+          >
+            <Feather name="sliders" size={13} color={viewMode === "calibrate" ? "#FFFFFF" : "#0A0A0A"} />
+            <Text style={[styles.viewTabText, viewMode === "calibrate" && styles.viewTabTextActive]}>
+              CALIBRATE ANALYSIS
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setViewMode("predict")}
+            style={[styles.viewTab, viewMode === "predict" && styles.viewTabActive]}
+            testID="view-predict"
+          >
+            <Feather name="target" size={13} color={viewMode === "predict" ? "#FFFFFF" : "#0A0A0A"} />
+            <Text style={[styles.viewTabText, viewMode === "predict" && styles.viewTabTextActive]}>
+              PREDICT ANALYSIS
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {viewMode === "predict" ? (
+          <PredictAnalysisView
+            samples={samples}
+            predictions={predictions}
+            selectedPredictionId={selectedPredictionId}
+            onSelectPrediction={setSelectedPredictionId}
+          />
+        ) : (
+        <>
 
         {/* Category tabs */}
         <View style={styles.catRow}>
@@ -338,8 +383,136 @@ export default function AnalysisScreen() {
             })}
           </>
         )}
+        </>
+        )}
         <View style={{ height: 32 }} />
       </ScrollView>
+    </View>
+  );
+}
+
+function PredictAnalysisView({
+  samples,
+  predictions,
+  selectedPredictionId,
+  onSelectPrediction,
+}: {
+  samples: CalSample[];
+  predictions: Prediction[];
+  selectedPredictionId: string | null;
+  onSelectPrediction: (id: string | null) => void;
+}) {
+  const fits = useMemo(() => {
+    const active = activeSamples(samples);
+    if (active.length < 2) return [];
+    const blanks = getBlanks(samples);
+    const blankAvg = avgBlankRGB(samples);
+    const sigmas = blanks.length >= 2
+      ? blankSigmas(blanks.map((b) => ({ r: b.r, g: b.g, b: b.b })), blankAvg ?? undefined)
+      : undefined;
+    return fitAllMetrics(
+      active.map((s) => ({ concentration: s.concentration, rgb: { r: s.r, g: s.g, b: s.b }, excluded: s.excluded })),
+      blankAvg ?? undefined,
+      sigmas
+    );
+  }, [samples]);
+
+  const blankAvg = useMemo(() => avgBlankRGB(samples), [samples]);
+  const selected = predictions.find((p) => p.id === selectedPredictionId) || predictions[0] || null;
+
+  if (predictions.length === 0) {
+    return (
+      <View style={styles.emptyBox}>
+        <Feather name="target" size={32} color="#9CA3AF" />
+        <Text style={styles.emptyTitle}>NO PREDICTIONS YET</Text>
+        <Text style={styles.emptySub}>Save a prediction in the Predict tab and tap Analyze.</Text>
+      </View>
+    );
+  }
+
+  const rows = !selected ? [] : fits
+    .map((f) => {
+      if (!f.fit) return null;
+      const v = predictConcentration(
+        f.fit, f.metric,
+        { r: selected.r, g: selected.g, b: selected.b },
+        blankAvg ?? undefined
+      );
+      return { id: f.metric.id, label: f.metric.label, r2: f.fit.r2, value: v };
+    })
+    .filter(Boolean) as { id: string; label: string; r2: number; value: number }[];
+  rows.sort((a, b) => b.r2 - a.r2);
+
+  return (
+    <View>
+      <Text style={[styles.sectionLabel, { marginTop: 4 }]}>SELECT PREDICTION</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+        {predictions.map((p) => {
+          const isActive = selected?.id === p.id;
+          return (
+            <TouchableOpacity
+              key={p.id}
+              onPress={() => onSelectPrediction(p.id)}
+              style={[styles.predChip, isActive && styles.predChipActive]}
+              testID={`pred-chip-${p.id}`}
+            >
+              <View style={[styles.predChipSwatch, { backgroundColor: p.hex }]} />
+              <Text style={[styles.predChipText, isActive && { color: "#FFFFFF" }]} numberOfLines={1}>
+                {Number.isFinite(p.predictedConcentration) ? `${p.predictedConcentration.toFixed(2)} µM` : "—"}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {selected && (
+        <View style={[styles.selectedCard, { borderColor: "#22C55E", backgroundColor: "#FFFFFF" }]}>
+          <View style={styles.selectedHead}>
+            <View style={[styles.eqDot, { backgroundColor: selected.hex }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.selectedLabel}>SELECTED PREDICTION</Text>
+              <Text style={styles.selectedName}>
+                {selected.bestMetricLabel}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.statsRow}>
+            <Stat label="R" value={`${selected.r}`} accent="#EF4444" />
+            <Stat label="G" value={`${selected.g}`} accent="#22C55E" />
+            <Stat label="B" value={`${selected.b}`} accent="#3B82F6" />
+            <Stat label="HEX" value={selected.hex} accent="#0A0A0A" />
+          </View>
+        </View>
+      )}
+
+      {fits.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Feather name="alert-circle" size={28} color="#9CA3AF" />
+          <Text style={styles.emptyTitle}>NO CALIBRATION</Text>
+          <Text style={styles.emptySub}>Build a calibration curve first to predict via every equation.</Text>
+        </View>
+      ) : (
+        <>
+          <Text style={styles.sectionLabel}>PREDICTED µM PER EQUATION · {rows.length}</Text>
+          {rows.map((r, i) => {
+            const qColor = r.r2 >= 0.9 ? "#16A34A" : r.r2 >= 0.7 ? "#F59E0B" : "#EF4444";
+            return (
+              <View key={r.id} style={[styles.fitRow, { borderLeftColor: qColor }]} testID={`pred-eq-${r.id}`}>
+                <View style={[styles.rankBadge, { backgroundColor: qColor }]}>
+                  <Text style={styles.rankText}>{i + 1}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fitLabel}>{r.label}</Text>
+                  <Text style={[styles.fitMetaR2, { color: qColor }]}>R² {r.r2.toFixed(4)}</Text>
+                </View>
+                <Text style={styles.predEqValue}>
+                  {Number.isFinite(r.value) ? `${r.value.toFixed(3)} µM` : "—"}
+                </Text>
+              </View>
+            );
+          })}
+        </>
+      )}
     </View>
   );
 }
@@ -564,6 +737,37 @@ const styles = StyleSheet.create({
   catTabActive: { backgroundColor: "#0A0A0A", borderColor: "#0A0A0A" },
   catTabText: { fontSize: 10.5, fontWeight: "900", color: "#0A0A0A", letterSpacing: 1.2 },
   catTabTextActive: { color: "#FFFFFF" },
+  viewTab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 11,
+    borderWidth: 1,
+    borderColor: "#0A0A0A",
+    borderRadius: 6,
+    backgroundColor: "#FFFFFF",
+  },
+  viewTabActive: { backgroundColor: "#002FA7", borderColor: "#002FA7" },
+  viewTabText: { fontSize: 11, fontWeight: "900", color: "#0A0A0A", letterSpacing: 1.2 },
+  viewTabTextActive: { color: "#FFFFFF" },
+  predChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#F8F9FA",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  predChipActive: { backgroundColor: "#002FA7", borderColor: "#002FA7" },
+  predChipSwatch: { width: 16, height: 16, borderRadius: 3, borderWidth: 1, borderColor: "rgba(0,0,0,0.1)" },
+  predChipText: { fontSize: 12, fontWeight: "800", color: "#0A0A0A" },
+  predEqValue: { fontSize: 14, fontWeight: "900", color: "#0A0A0A", minWidth: 80, textAlign: "right" },
   title: {
     fontSize: 40,
     color: "#0A0A0A",

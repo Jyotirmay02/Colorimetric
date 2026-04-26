@@ -182,11 +182,15 @@ export function blankSigmas(
 }
 
 export function fitAllMetrics(
-  samples: { concentration: number; rgb: RGB; excluded?: boolean }[],
+  samples: { concentration: number; rgb: RGB; excluded?: boolean; isBlank?: boolean }[],
   blank?: RGB,
   sigmaBlanks?: Map<string, number>
 ): MetricFit[] {
-  const active = samples.filter((s) => !s.excluded);
+  // Blanks (concentration=0 OR explicitly tagged isBlank) are reference points
+  // only — they should NOT participate in the regression fit.
+  const active = samples.filter(
+    (s) => !s.excluded && !s.isBlank && s.concentration > 0
+  );
   return METRICS.map((m) => {
     if (m.needsBlank && !blank) {
       return { metric: m, fit: null, error: "Needs blank (I\u2080)" };
@@ -197,7 +201,6 @@ export function fitAllMetrics(
     let xs: number[];
     let ys: number[];
     if (m.category === "logconc-loglinear") {
-      // Drop samples with conc <= 0 or metric <= 0 (log undefined)
       xs = []; ys = [];
       for (const s of active) {
         const yv = m.compute(s.rgb, blank);

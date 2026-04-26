@@ -39,7 +39,7 @@ import { pickFromGallery, takePhoto } from "../src/imagePicker";
 
 const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 
-type Mode = "calibrate" | "predict";
+type Mode = "calibrate" | "predict" | "blank";
 
 type ImageState = { uri: string; base64: string } | null;
 
@@ -47,7 +47,7 @@ export default function AnalyzeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ mode?: Mode }>();
-  const mode: Mode = params.mode === "predict" ? "predict" : "calibrate";
+  const mode: Mode = params.mode === "predict" ? "predict" : params.mode === "blank" ? "blank" : "calibrate";
 
   const [image, setImage] = useState<ImageState>(null);
   const [rgb, setRgb] = useState<{ r: number; g: number; b: number; hex: string } | null>(null);
@@ -264,6 +264,19 @@ export default function AnalyzeScreen() {
     }
     setSaving(true);
     try {
+      if (mode === "blank") {
+        await addCalSample({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          createdAt: Date.now(),
+          name: sampleName.trim() || `Blank ${new Date().toLocaleTimeString()}`,
+          uri: image?.uri,
+          r: rgb.r, g: rgb.g, b: rgb.b, hex: rgb.hex,
+          concentration: 0,
+          isBlank: true,
+        });
+        router.back();
+        return;
+      }
       if (mode === "calibrate") {
         const conc = parseFloat(concentration);
         if (!Number.isFinite(conc)) {
@@ -324,10 +337,12 @@ export default function AnalyzeScreen() {
     }
   };
 
-  const title = mode === "calibrate" ? "Add calibration" : "New measurement";
+  const title = mode === "calibrate" ? "Add calibration" : mode === "blank" ? "Add blank (I\u2080)" : "New measurement";
   const subtitle =
     mode === "calibrate"
       ? "SAMPLE · KNOWN CONCENTRATION (µM)"
+      : mode === "blank"
+      ? "BLANK · I\u2080 REFERENCE"
       : "ROI · PREDICT CONCENTRATION (µM)";
 
   if (!settings) {
@@ -690,6 +705,8 @@ export default function AnalyzeScreen() {
                 <Text style={styles.saveBtnText}>
                   {mode === "calibrate"
                     ? "SAVE TO CALIBRATION"
+                    : mode === "blank"
+                    ? "SAVE BLANK"
                     : "SAVE PREDICTION"}
                 </Text>
               </>

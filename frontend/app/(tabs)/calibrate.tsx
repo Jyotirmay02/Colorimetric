@@ -133,6 +133,15 @@ export default function CalibrateScreen() {
             compute σ_blank for each equation and use it for IUPAC LoD = 3·σ/|slope|.
             With &lt;2 blanks, LoD falls back to regression SE.
           </Text>
+          <TouchableOpacity
+            onPress={() => router.push({ pathname: "/analyze", params: { mode: "blank" } })}
+            style={styles.uploadBlankBtn}
+            testID="upload-blank-btn"
+            activeOpacity={0.85}
+          >
+            <Feather name="plus" size={14} color="#FFFFFF" />
+            <Text style={styles.uploadBlankText}>UPLOAD BLANK IMAGE</Text>
+          </TouchableOpacity>
           {blanks.length >= 2 && blankAvg && (
             <View style={styles.blankAvg}>
               <View style={[styles.blankSwatch, { backgroundColor: `rgb(${Math.round(blankAvg.r)}, ${Math.round(blankAvg.g)}, ${Math.round(blankAvg.b)})` }]} />
@@ -232,6 +241,22 @@ const styles = StyleSheet.create({
   blankAvg: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#FDE68A" },
   blankSwatch: { width: 24, height: 24, borderRadius: 4, borderWidth: 1, borderColor: "#92400E" },
   blankAvgText: { fontSize: 12, color: "#0A0A0A", fontWeight: "700" },
+  uploadBlankBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#92400E",
+    paddingVertical: 10,
+    borderRadius: 5,
+    marginTop: 10,
+  },
+  uploadBlankText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.4,
+  },
   viewAnalysisBtn: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 10, alignSelf: "flex-start", backgroundColor: "#EEF2FF", paddingHorizontal: 10, paddingVertical: 7, borderRadius: 4 },
   viewAnalysisText: { color: "#002FA7", fontSize: 11, fontWeight: "900", letterSpacing: 1.4 },
   warnBanner: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 10, backgroundColor: "#FFFBEB", borderColor: "#FDE68A", borderWidth: 1, borderRadius: 6, marginBottom: 12 },
