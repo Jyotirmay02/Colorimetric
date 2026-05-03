@@ -410,7 +410,7 @@ export default function AnalysisScreen() {
               <Text style={styles.sectionLabel}>
                 {category === "conc-linear" ? "LINEAR FITS" : "LOG-LOG FITS"} · {filteredFits.length}
               </Text>
-              <TouchableOpacity onPress={onExportCSV} style={styles.exportBtn} testID="export-csv-btn">
+              <TouchableOpacity onPress={onExportCSV} style={[styles.exportBtn, { backgroundColor: "#002FA7" }]} testID="export-csv-btn">
                 <Feather name="download" size={13} color="#FFFFFF" />
                 <Text style={styles.exportText}>CSV</Text>
               </TouchableOpacity>
@@ -686,7 +686,7 @@ function PredictAnalysisView({
               csv += longHeader.join(",") + "\n" + longRows.map((r) => r.join(",")).join("\n");
               await exportCSV(`predict-analysis-${fmtTs()}.csv`, csv);
             }}
-            style={styles.exportBtn}
+            style={[styles.exportBtn, { backgroundColor: "#22C55E" }]}
             testID="export-predict-csv"
           >
             <Feather name="download" size={13} color="#FFFFFF" />
@@ -1048,7 +1048,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#FFFFFF",
   },
-  catTabActive: { backgroundColor: "#0A0A0A", borderColor: "#0A0A0A" },
+  catTabActive: { backgroundColor: "#002FA7", borderColor: "#002FA7" },
   catTabText: { fontSize: 10.5, fontWeight: "900", color: "#0A0A0A", letterSpacing: 1.2 },
   catTabTextActive: { color: "#FFFFFF" },
   viewTab: {
@@ -1078,7 +1078,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginRight: 8,
   },
-  predChipActive: { backgroundColor: "#002FA7", borderColor: "#002FA7" },
+  predChipActive: { backgroundColor: "#22C55E", borderColor: "#22C55E" },
   predChipSwatch: { width: 16, height: 16, borderRadius: 3, borderWidth: 1, borderColor: "rgba(0,0,0,0.1)" },
   predChipText: { fontSize: 12, fontWeight: "800", color: "#0A0A0A" },
   predEqValue: { fontSize: 14, fontWeight: "900", color: "#0A0A0A", minWidth: 80, textAlign: "right" },
@@ -1097,7 +1097,7 @@ const styles = StyleSheet.create({
     left: 4,
     width: "50%",
     height: "100%",
-    backgroundColor: "#002FA7",
+    backgroundColor: "#F59E0B",
     borderRadius: 6,
     marginRight: 4,
   },
@@ -1114,7 +1114,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#0A0A0A",
+    backgroundColor: "#EF4444",
     paddingHorizontal: 10,
     paddingVertical: 11,
     borderRadius: 6,

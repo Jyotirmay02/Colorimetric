@@ -17,7 +17,7 @@ import {
   avgBlankRGB,
   activeSamples,
 } from "../../src/storage";
-import { bestMetric, blankSigmas, fitAllMetrics } from "../../src/metrics";
+import { bestMetric, blankSigmas, fitAllMetrics, METRICS } from "../../src/metrics";
 import type { CalSample, Prediction } from "../../src/storage";
 
 export default function HomeScreen() {
@@ -194,14 +194,30 @@ export default function HomeScreen() {
             accent="#F59E0B"
             icon="activity"
             title="Analysis"
-            body="All 14 equations ranked by R²"
+            body={`All ${METRICS.length} equations ranked by R²`}
             onPress={() => router.push("/analysis")}
           />
         </View>
 
         {/* Recent predictions removed — see Predict tab */}
 
-        <View style={{ height: 32 }} />
+        {/* Footer — credits */}
+        <View style={styles.footer}>
+          <View style={styles.footerDivider} />
+          <Text style={styles.footerLabel}>DEVELOPED BY</Text>
+          <Text style={styles.footerNames}>
+            Swagatika Sahu · Biswajit Mohapatra · Jyotirmay Sethi
+          </Text>
+          <Text style={styles.footerCollegeLabel}>PROJECT WORK AT</Text>
+          <Text style={styles.footerCollege}>
+            Maharaja Poornachandra Autonomous College{"\n"}Baripada, Odisha, India
+          </Text>
+          <Text style={styles.footerCopyright}>
+            © {new Date().getFullYear()} Spectral Solution Lab. All rights reserved.
+          </Text>
+        </View>
+
+        <View style={{ height: 16 }} />
       </ScrollView>
     </View>
   );
@@ -479,5 +495,52 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#002FA7",
     letterSpacing: 1,
+  },
+  footer: {
+    marginTop: 24,
+    alignItems: "center",
+    paddingHorizontal: 8,
+  },
+  footerDivider: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    alignSelf: "stretch",
+    marginBottom: 18,
+  },
+  footerLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 2,
+    color: "#9CA3AF",
+    marginBottom: 6,
+  },
+  footerNames: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0A0A0A",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  footerCollegeLabel: {
+    marginTop: 14,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 2,
+    color: "#9CA3AF",
+    marginBottom: 6,
+  },
+  footerCollege: {
+    fontSize: 12,
+    color: "#4B5563",
+    textAlign: "center",
+    lineHeight: 17,
+    fontWeight: "600",
+  },
+  footerCopyright: {
+    marginTop: 18,
+    fontSize: 10.5,
+    color: "#9CA3AF",
+    textAlign: "center",
+    fontWeight: "600",
   },
 });
