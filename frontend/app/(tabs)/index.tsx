@@ -210,7 +210,7 @@ export default function HomeScreen() {
           </Text>
           <Text style={styles.footerCollegeLabel}>PROJECT WORK AT</Text>
           <Text style={styles.footerCollege}>
-            Maharaja Poornachandra Autonomous College{"\n"}Baripada, Odisha, India
+            Maharaja Purna Chandra Autonomous College{"\n"}Baripada, Odisha, India
           </Text>
           <Text style={styles.footerCopyright}>
             © {new Date().getFullYear()} Spectral Solution Lab. All rights reserved.
