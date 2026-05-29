@@ -109,12 +109,12 @@ export default function AnalyzeScreen() {
   const roiMode: RoiMode = settings?.roiMode ?? "center";
 
   const pickImage = useCallback(async (src: "camera" | "gallery") => {
-    const p = src === "camera" ? await takePhoto() : await pickFromGallery();
+    const p = src === "camera" ? await takePhoto(router) : await pickFromGallery();
     if (!p) return;
     setImage(p);
     setRgb(null);
     setTapPoint(null);
-  }, []);
+  }, [router]);
 
   const callExtract = async (xNorm: number, yNorm: number) => {
     if (!image) return;

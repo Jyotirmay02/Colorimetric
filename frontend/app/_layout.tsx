@@ -14,6 +14,10 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="analyze" options={{ presentation: "card" }} />
+        <Stack.Screen
+          name="camera"
+          options={{ presentation: "fullScreenModal", animation: "fade" }}
+        />
       </Stack>
     </SafeAreaProvider>
   );
