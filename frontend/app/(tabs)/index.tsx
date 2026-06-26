@@ -213,7 +213,7 @@ export default function HomeScreen() {
             Maharaja Purna Chandra Autonomous College{"\n"}Baripada, Odisha, India
           </Text>
           <Text style={styles.footerCopyright}>
-            © {new Date().getFullYear()} Spectral Solution Lab. All rights reserved.
+            © {new Date().getFullYear()} Blue Lotus Lab. All rights reserved.
           </Text>
         </View>
 

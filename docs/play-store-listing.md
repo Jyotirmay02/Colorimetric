@@ -49,7 +49,21 @@ WHO IS THIS FOR
 
 Chemistry undergraduate and postgraduate students, analytical chemistry researchers, classroom demos, low-cost field testing for environmental water samples, and anyone using paper-based or colorimetric kits where a spectrophotometer isn't available.
 
-Developed as an academic research project at Maharaja Purna Chandra Autonomous College, Baripada, Odisha, India, by Swagatika Sahu, Biswajit Mohapatra, and Jyotirmay Sethi.
+Developed by Blue Lotus Lab — an academic research project at Maharaja Purna Chandra Autonomous College, Baripada, Odisha, India, by Swagatika Sahu, Biswajit Mohapatra, and Jyotirmay Sethi.
+```
+
+---
+
+## Developer name (visible on Play Store listing)
+
+```
+Blue Lotus Lab
+```
+
+## Package name (internal, not visible to users)
+
+```
+com.spectrallab.app
 ```
 
 ---
@@ -77,7 +91,7 @@ Developed as an academic research project at Maharaja Purna Chandra Autonomous C
 ## Contact details
 
 - **Website:** *(your GitHub Pages URL, e.g. https://<username>.github.io/<repo>/)*
-- **Email:** *(the new dedicated dev email)*
+- **Email:** contact@bluelotuslab.com
 - **Phone:** optional, can skip
 
 ## Privacy policy URL

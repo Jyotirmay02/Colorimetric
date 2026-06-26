@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mpcautonomous.spectralsolutionlab",
+      "bundleIdentifier": "com.spectrallab.app",
       "buildNumber": "1",
       "infoPlist": {
         "NSCameraUsageDescription": "Capture solution photos for RGB analysis",
@@ -18,11 +18,11 @@
       }
     },
     "android": {
-      "package": "com.mpcautonomous.spectralsolutionlab",
+      "package": "com.spectrallab.app",
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#FFFFFF"
+        "backgroundColor": "#1C1C4C"
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
@@ -53,9 +53,9 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "imageWidth": 220,
           "resizeMode": "contain",
-          "backgroundColor": "#FFFFFF"
+          "backgroundColor": "#1C1C4C"
         }
       ],
       "expo-web-browser",
