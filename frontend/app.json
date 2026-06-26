@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Spectral Solution Lab",
-    "slug": "spectral-solution-lab",
+    "name": "Chromalyze",
+    "slug": "chromalyze",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "spectralsolutionlab",
+    "scheme": "chromalyze",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {

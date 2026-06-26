@@ -1,4 +1,4 @@
-# App Icon Design Concepts — Spectral Solution Lab
+# App Icon Design Concepts — Chromalyze
 
 Pick one of the three concepts below. Each is described in detail so it can be created in **Figma, Canva, Illustrator, or any design tool**. For automatic icon generation across all required sizes (1024×1024 master, 512×512 Play Store, 192×192 launcher, adaptive icon foreground/background), use [icon.kitchen](https://icon.kitchen/) — it takes a single 1024 master PNG and generates everything Expo + Play Store need.
 

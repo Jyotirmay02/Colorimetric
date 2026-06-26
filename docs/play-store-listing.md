@@ -1,4 +1,4 @@
-# Play Store Listing — Spectral Solution Lab
+# Play Store Listing — Chromalyze
 
 Copy/paste the blocks below into the matching fields in Google Play Console → **Main store listing**.
 
@@ -7,7 +7,7 @@ Copy/paste the blocks below into the matching fields in Google Play Console → 
 ## App name (max 30 chars)
 
 ```
-Spectral Solution Lab
+Chromalyze
 ```
 *(21 chars)*
 
@@ -21,7 +21,7 @@ Extract RGB from solution photos. Fit colorimetric curves. Predict concentration
 ## Full description (max 4000 chars)
 
 ```
-Spectral Solution Lab is a research utility for chemistry students and analysts who need to extract colour information from images of liquid samples and turn that data into quantitative concentration measurements.
+Chromalyze is a research utility for chemistry students and analysts who need to extract colour information from images of liquid samples and turn that data into quantitative concentration measurements.
 
 Designed for benchtop colorimetry without specialised equipment, the app lets you photograph a vial, tap to select a region of interest, and instantly read its R, G, B values. Build a calibration curve from samples of known concentration, then predict unknown samples by colour alone.
 

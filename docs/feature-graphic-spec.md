@@ -38,7 +38,7 @@ The **Feature Graphic** is the big banner image that appears at the top of your 
 
 **Title (large, bold):**
 ```
-Spectral Solution Lab
+Chromalyze
 ```
 
 **Subtitle (smaller, regular):**
@@ -58,7 +58,7 @@ Don't add full sentences or app screenshots inside the feature graphic — it ge
 1. **Canva** ([canva.com](https://www.canva.com/)) — search "Play Store Feature Graphic" template, pick a clean banner, recolour to the palette above, replace text. ~10 minutes.
 2. **Figma** — free, set up a 1024×500 frame, drop a gradient rectangle, two text layers, and a small chemistry vial illustration from the [Icons8](https://icons8.com/icons/set/chemistry) free library.
 3. **AI generator (Midjourney/DALL-E)** — prompt:  
-   > *"Play Store feature graphic, 1024x500, deep blue gradient background, app title 'Spectral Solution Lab' in bold white sans-serif, subtitle 'Colorimetric analysis from your phone', small white test tube illustration with rainbow gradient inside on left, minimalist clean design, no watermark"*
+   > *"Play Store feature graphic, 1024x500, deep blue gradient background, app title 'Chromalyze' in bold white sans-serif, subtitle 'Colorimetric analysis from your phone', small white test tube illustration with rainbow gradient inside on left, minimalist clean design, no watermark"*
 
 ## File to deliver
 

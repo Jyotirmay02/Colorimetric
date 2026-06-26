@@ -79,7 +79,7 @@ export default function HomeScreen() {
           style={styles.hero}
         >
           <Text style={styles.heroEyebrow}>COLORIMETRIC · LAB</Text>
-          <Text style={styles.heroTitle}>Spectral{"\n"}Solution Lab.</Text>
+          <Text style={styles.heroTitle}>Chromalyze</Text>
           <Text style={styles.heroSub}>
             Build calibration curves from vial images. Predict concentration
             by color. Find the equation that fits your analyte best.
